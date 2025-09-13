@@ -1,11 +1,12 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import authRoutes from "./routes/authRoutes.js";
 
 dotenv.config();
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 8000;
 
 const corsOptions = {
     origin: "*",
@@ -16,7 +17,8 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
-// Example base route
+app.use("/api/auth", authRoutes);
+
 app.get("/", (req, res) => {
     res.send("Server is up and running");
 });
