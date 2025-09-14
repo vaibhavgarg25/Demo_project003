@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import authRoutes from "./routes/authRoutes.js";
 import trainRoutes from "./routes/trainRoutes.js";
+import uploadRoutes from "./routes/uploadroutes.js";
 
 dotenv.config({ debug: false });
 
@@ -20,7 +21,7 @@ app.use(express.json());
 
 app.use("/api/auth", authRoutes);
 app.use("/api/train",trainRoutes);
-
+app.use("/api/upload",uploadRoutes);
 app.get("/", (req, res) => {
     res.send("Server is up and running");
 });
