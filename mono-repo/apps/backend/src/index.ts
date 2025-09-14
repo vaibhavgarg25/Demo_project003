@@ -2,8 +2,9 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import authRoutes from "./routes/authRoutes.js";
+import trainRoutes from "./routes/trainRoutes.js";
 
-dotenv.config();
+dotenv.config({ debug: false });
 
 const app = express();
 const port = process.env.PORT || 8000;
@@ -18,6 +19,7 @@ app.use(cors(corsOptions));
 app.use(express.json());
 
 app.use("/api/auth", authRoutes);
+app.use("/api/train",trainRoutes);
 
 app.get("/", (req, res) => {
     res.send("Server is up and running");
