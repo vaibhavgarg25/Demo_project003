@@ -10,119 +10,120 @@ datasource db {
 
 // Enums
 enum JobCardStatusEnum {
-  OPEN
-  CLOSED
+  open
+  close
 }
 
 enum CleaningSlotStatusEnum {
-  FREE
-  BOOKED
-  IN_PROGRESS
+  free
+  booked
+  in_progress
 }
 
 enum OperationalStatusEnum {
-  IN_SERVICE
-  STANDBY
-  UNDER_MAINTENANCE
+  In_Service
+  Standby
+  Under_Maintenance
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
+  id        Int       @id @default(autoincrement())
+  email     String    @unique
   password  String
-  role      String   // e.g., "admin", "user"
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  role      String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 }
-model Train {
-  id                Int                  @id @default(autoincrement())
-  trainNumber       String               @unique
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
 
-  fitness           FitnessCertificates?
-  jobCardStatus     JobCardStatus?
-  branding          Branding?
-  mileage           Mileage?
-  cleaning          Cleaning?
-  stabling          Stabling?
-  operations        Operations?
+model Train {
+  id        Int       @id @default(autoincrement())
+  trainname String    @unique
+  trainID   String    @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  fitness        FitnessCertificates?
+  jobCardStatus  JobCardStatus?
+  branding       Branding?
+  mileage        Mileage?
+  cleaning       Cleaning?
+  stabling       Stabling?
+  operations     Operations?
 }
 
 model FitnessCertificates {
-  id                    Int      @id @default(autoincrement())
-  rollingStockStatus    Boolean
-  signallingStatus      Boolean
-  telecomStatus         Boolean
-  fitnessExpiryDate     DateTime
-  fitnessExpiryDays     Int
-  lastFitnessCheckDate  DateTime
-  
-  train   Train @relation(fields: [trainId], references: [id])
-  trainId Int   @unique
+  id                        Int       @id @default(autoincrement())
+  rollingStockFitnessStatus  Boolean
+  signallingFitnessStatus    Boolean
+  telecomFitnessStatus       Boolean
+  fitnessExpiryDate          DateTime
+  lastFitnessCheckDate       DateTime
+
+  train     Train   @relation(fields: [trainId], references: [id])
+  trainId   Int     @unique
 }
 
 model JobCardStatus {
-  id                 Int                @id @default(autoincrement())
-  jobCardStatus      JobCardStatusEnum  // Open / Closed as Enum
-  openJobCards       Int               // 0,1,2,5,7
-  closedJobCards     Int               // same
-  criticalJobCard    Boolean
-  lastJobCardUpdate  DateTime
+  id             Int             @id @default(autoincrement())
+  jobCardStatus  JobCardStatusEnum
+  openJobCards   Int
+  closedJobCards Int
+  lastJobCardUpdate DateTime
 
-  train   Train @relation(fields: [trainId], references: [id])
-  trainId Int   @unique
+  train     Train   @relation(fields: [trainId], references: [id])
+  trainId   Int     @unique
 }
 
 model Branding {
-  id                  Int      @id @default(autoincrement())
-  brandingActive      Boolean
-  brandCampaignID     String?
-  exposureHoursAccrued Int
-  exposureHoursTarget  Int
-  exposureDailyQuota   Int
+  id                    Int       @id @default(autoincrement())
+  brandingActive        Boolean
+  brandCampaignID       String?
+  exposureHoursAccrued  Int
+  exposureHoursTarget   Int
+  exposureDailyQuota    Int
 
-  train   Train @relation(fields: [trainId], references: [id])
-  trainId Int   @unique
+  train     Train   @relation(fields: [trainId], references: [id])
+  trainId   Int     @unique
 }
 
 model Mileage {
-  id                        Int      @id @default(autoincrement())
-  totalMileageKM            Int
+  id                       Int       @id @default(autoincrement())
+  totalMileageKM           Int
   mileageSinceLastServiceKM Int
   mileageBalanceVariance    Int
-  mileageLimitBeforeService Int
+  brakepadWearPercent       Int
+  hvacWearPercent           Int
 
-  train   Train @relation(fields: [trainId], references: [id])
-  trainId Int   @unique
+  train     Train   @relation(fields: [trainId], references: [id])
+  trainId   Int     @unique
 }
 
 model Cleaning {
-  id                  Int                   @id @default(autoincrement())
-  cleaningRequired    Boolean
-  cleaningSlotStatus  CleaningSlotStatusEnum // Enum for cleaning slot status
-  bayOccupancyIDC     String?
+  id                   Int                 @id @default(autoincrement())
+  cleaningRequired     Boolean
+  cleaningSlotStatus   CleaningSlotStatusEnum
+  bayOccupancyIDC      String?
   cleaningCrewAssigned Int?
-  lastCleanedDate     DateTime
+  lastCleanedDate      DateTime
 
-  train   Train @relation(fields: [trainId], references: [id])
-  trainId Int   @unique
+  train     Train   @relation(fields: [trainId], references: [id])
+  trainId   Int     @unique
 }
 
 model Stabling {
-  id                    Int      @id @default(autoincrement())
+  id                    Int       @id @default(autoincrement())
   bayPositionID         Int
-  stablingSequenceOrder Int
   shuntingMovesRequired Int
+  stablingSequenceOrder Int
 
-  train   Train @relation(fields: [trainId], references: [id])
-  trainId Int   @unique
+  train     Train   @relation(fields: [trainId], references: [id])
+  trainId   Int     @unique
 }
 
 model Operations {
-  id                Int                  @id @default(autoincrement())
-  operationalStatus OperationalStatusEnum // Enum for operational status
+  id                Int                @id @default(autoincrement())
+  operationalStatus OperationalStatusEnum
 
-  train   Train @relation(fields: [trainId], references: [id])
-  trainId Int   @unique
+  train     Train   @relation(fields: [trainId], references: [id])
+  trainId   Int     @unique
 }
