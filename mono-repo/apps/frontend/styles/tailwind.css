@@ -1,0 +1,212 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import "../public/fonts/chirp.css";
+
+@layer base {
+  :root {
+    /* Dashboard specific colors */
+    --bg: #f8f8f8;
+    --surface: #ffffff;
+    --text: #111111;
+    --muted: #555555;
+    --border: #e5e5e5;
+    --hover: #f2f2f2;
+    --radius: 0.5rem;
+
+    /* Shadcn colors */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 47.4% 11.2%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+  }
+
+  .dark {
+    /* Dashboard specific colors - strict black and white */
+    --bg: #000000;
+    --surface: #0b0b0b;
+    --text: #ffffff;
+    --muted: #aaaaaa;
+    --border: #1a1a1a;
+    --hover: #111111;
+
+    /* Shadcn colors for dark mode */
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    background-color: var(--bg);
+    color: var(--text);
+    /* Using CSS font-family directly instead of undefined font-chirp class */
+    font-family: "Chirp", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+
+  /* Focus styles for accessibility */
+  *:focus-visible {
+    @apply outline-2 outline-offset-2;
+    outline-color: var(--text);
+  }
+
+  /* KPI ring utilities */
+  .kpi-ring {
+    @apply relative inline-flex items-center justify-center;
+  }
+
+  .kpi-ring::before {
+    content: "";
+    @apply absolute inset-0 rounded-full border-4;
+    border-color: var(--border);
+  }
+
+  .kpi-ring::after {
+    content: "";
+    @apply absolute inset-0 rounded-full border-4 border-transparent;
+    border-top-color: var(--text);
+    transform: rotate(calc(var(--progress, 0) * 3.6deg));
+    transition: transform 0.3s ease;
+  }
+
+  /* Slider styling */
+  .slider::-webkit-slider-thumb {
+    appearance: none;
+    height: 20px;
+    width: 20px;
+    border-radius: 50%;
+    background: var(--text);
+    cursor: pointer;
+    border: 2px solid var(--bg);
+    box-shadow: 0 0 0 1px var(--border);
+  }
+
+  .slider::-moz-range-thumb {
+    height: 20px;
+    width: 20px;
+    border-radius: 50%;
+    background: var(--text);
+    cursor: pointer;
+    border: 2px solid var(--bg);
+    box-shadow: 0 0 0 1px var(--border);
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .text-pretty {
+    text-wrap: pretty;
+  }
+
+  /* Custom text colors using CSS variables */
+  .text-text {
+    color: var(--text);
+  }
+
+  .text-muted {
+    color: var(--muted);
+  }
+
+  .bg-surface {
+    background-color: var(--surface);
+  }
+
+  .bg-bg-hover {
+    background-color: var(--bg-hover);
+  }
+
+  .border-border {
+    border-color: var(--border);
+  }
+
+  /* Animation utilities */
+  @keyframes train-move {
+    0%,
+    100% {
+      transform: translateX(0);
+    }
+    50% {
+      transform: translateX(10px);
+    }
+  }
+
+  @keyframes wheel-spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @keyframes shadow-pulse {
+    0%,
+    100% {
+      opacity: 0.2;
+    }
+    50% {
+      opacity: 0.4;
+    }
+  }
+
+  .animate-train {
+    animation: train-move 3s ease-in-out infinite;
+  }
+
+  .animate-wheel {
+    animation: wheel-spin 1s linear infinite;
+    transform-origin: center;
+  }
+
+  .animate-shadow {
+    animation: shadow-pulse 3s ease-in-out infinite;
+  }
+
+  /* Respect reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-train,
+    .animate-wheel,
+    .animate-shadow {
+      animation: none;
+    }
+  }
+}

@@ -1,0 +1,22 @@
+/* public/fonts/chirp.css */
+@font-face{
+  font-family: "Chirp";
+  src: url("/fonts/chirp-regular.woff") format("woff");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face{
+  font-family: "Chirp";
+  src: url("/fonts/chirp-medium.woff") format("woff");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face{
+  font-family: "Chirp";
+  src: url("/fonts/chirp-bold.woff") format("woff");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
