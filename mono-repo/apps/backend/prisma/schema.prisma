@@ -28,6 +28,7 @@ enum OperationalStatusEnum {
 
 model User {
   id        Int       @id @default(autoincrement())
+  name      String
   email     String    @unique
   password  String
   role      String
@@ -59,8 +60,8 @@ model FitnessCertificates {
   fitnessExpiryDate          DateTime
   lastFitnessCheckDate       DateTime
 
-  train     Train   @relation(fields: [trainId], references: [id])
-  trainId   Int     @unique
+  train     Train   @relation(fields: [trainId], references: [trainID])
+  trainId   String     @unique
 }
 
 model JobCardStatus {
@@ -70,8 +71,8 @@ model JobCardStatus {
   closedJobCards Int
   lastJobCardUpdate DateTime
 
-  train     Train   @relation(fields: [trainId], references: [id])
-  trainId   Int     @unique
+  train     Train   @relation(fields: [trainId], references: [trainID])
+  trainId   String     @unique
 }
 
 model Branding {
@@ -82,8 +83,8 @@ model Branding {
   exposureHoursTarget   Int
   exposureDailyQuota    Int
 
-  train     Train   @relation(fields: [trainId], references: [id])
-  trainId   Int     @unique
+  train     Train   @relation(fields: [trainId], references: [trainID])
+  trainId   String     @unique
 }
 
 model Mileage {
@@ -94,8 +95,8 @@ model Mileage {
   brakepadWearPercent       Int
   hvacWearPercent           Int
 
-  train     Train   @relation(fields: [trainId], references: [id])
-  trainId   Int     @unique
+  train     Train   @relation(fields: [trainId], references: [trainID])
+  trainId   String     @unique
 }
 
 model Cleaning {
@@ -106,8 +107,8 @@ model Cleaning {
   cleaningCrewAssigned Int?
   lastCleanedDate      DateTime
 
-  train     Train   @relation(fields: [trainId], references: [id])
-  trainId   Int     @unique
+  train     Train   @relation(fields: [trainId], references: [trainID])
+  trainId   String     @unique
 }
 
 model Stabling {
@@ -116,14 +117,14 @@ model Stabling {
   shuntingMovesRequired Int
   stablingSequenceOrder Int
 
-  train     Train   @relation(fields: [trainId], references: [id])
-  trainId   Int     @unique
+  train     Train   @relation(fields: [trainId], references: [trainID])
+  trainId   String     @unique
 }
 
 model Operations {
   id                Int                @id @default(autoincrement())
   operationalStatus OperationalStatusEnum
 
-  train     Train   @relation(fields: [trainId], references: [id])
-  trainId   Int     @unique
+  train     Train   @relation(fields: [trainId], references: [trainID])
+  trainId   String     @unique
 }
