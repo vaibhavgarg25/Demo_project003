@@ -1,50 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import "../styles/tailwind.css";
+
+/* Adding CSS variables for strict light/dark theme system */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #f8f8f8;
+  --surface: #ffffff;
+  --text: #111111;
+  --muted: #555555;
+  --border: #e5e5e5;
+  --hover: #f2f2f2;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+.dark {
+  --bg: #000000;
+  --surface: #0b0b0b;
+  --text: #ffffff;
+  --muted: #aaaaaa;
+  --border: #1a1a1a;
+  --hover: #111111;
 }
 
-html,
+/* Adding Chirp font import */
+@import url("/fonts/chirp.css");
+
 body {
-  max-width: 100vw;
-  overflow-x: hidden;
-}
-
-body {
-  color: var(--foreground);
-  background: var(--background);
-}
-
-* {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
-}
-
-a {
-  color: inherit;
-  text-decoration: none;
-}
-
-.imgDark {
-  display: none;
-}
-
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
-  }
-
-  .imgLight {
-    display: none;
-  }
-  .imgDark {
-    display: unset;
-  }
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: "Chirp", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
