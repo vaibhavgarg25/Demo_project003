@@ -2,12 +2,12 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { Play, RotateCcw, Save } from "lucide-react"
-import { TRAINSETS } from "@/lib/mock-data"
+import { fetchTrainsets, type Trainset } from "@/lib/mock-data"
 import { generatePlan, savePlannerRun, type PlannerResult } from "@/lib/planner"
 
 const plannerSchema = z.object({
@@ -26,8 +26,29 @@ const statusOptions = [
 ]
 
 export default function PlannerPage() {
+  const [trainsets, setTrainsets] = useState<Trainset[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [results, setResults] = useState<PlannerResult[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
+
+  useEffect(() => {
+    const loadTrainsets = async () => {
+      try {
+        setLoading(true)
+        const data = await fetchTrainsets()
+        setTrainsets(data)
+        setError(null)
+      } catch (err) {
+        console.error("Failed to load trainsets:", err)
+        setError("Failed to load trainset data")
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadTrainsets()
+  }, [])
 
   const {
     register,
@@ -49,12 +70,14 @@ export default function PlannerPage() {
   const watchedValues = watch()
 
   const onSubmit = async (data: PlannerFormData) => {
+    if (trainsets.length === 0) return
+
     setIsGenerating(true)
 
     // Simulate processing time
     await new Promise((resolve) => setTimeout(resolve, 1000))
 
-    const planResults = generatePlan(TRAINSETS, data)
+    const planResults = generatePlan(trainsets, data)
     setResults(planResults)
     setIsGenerating(false)
   }
@@ -69,6 +92,55 @@ export default function PlannerPage() {
   const handleReset = () => {
     reset()
     setResults([])
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-8">
+        <div>
+          <h1 className="text-2xl font-bold text-text mb-2 text-balance">Fleet Allocation Planner</h1>
+          <p className="text-muted">Generate optimal trainset allocations based on your operational requirements</p>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-1">
+            <div className="bg-surface border border-border rounded-lg p-6 animate-pulse">
+              <div className="h-6 bg-border rounded mb-4"></div>
+              <div className="space-y-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="h-10 bg-border rounded"></div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="lg:col-span-2">
+            <div className="bg-surface border border-border rounded-lg p-12 animate-pulse">
+              <div className="h-8 bg-border rounded"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-8">
+        <div>
+          <h1 className="text-2xl font-bold text-text mb-2 text-balance">Fleet Allocation Planner</h1>
+          <p className="text-muted">Generate optimal trainset allocations based on your operational requirements</p>
+        </div>
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6">
+          <h2 className="text-lg font-semibold text-red-800 dark:text-red-200 mb-2">Error Loading Data</h2>
+          <p className="text-red-600 dark:text-red-400">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-4 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    )
   }
 
   const selectedResults = results.filter((r) => r.selected)
@@ -95,6 +167,7 @@ export default function PlannerPage() {
             <h2 className="text-lg font-semibold text-text mb-4">Planning Parameters</h2>
 
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+              {/* ... existing form fields ... */}
               <div>
                 <label className="block text-sm font-medium text-text mb-1">Maximum Trainsets</label>
                 <input
@@ -151,7 +224,7 @@ export default function PlannerPage() {
               <div className="flex gap-2 pt-4">
                 <button
                   type="submit"
-                  disabled={isGenerating}
+                  disabled={isGenerating || trainsets.length === 0}
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-text text-background rounded-md font-medium hover:opacity-90 disabled:opacity-50 transition-opacity focus:outline-none focus:ring-2 focus:ring-text focus:ring-offset-2"
                 >
                   {isGenerating ? (
@@ -212,6 +285,7 @@ export default function PlannerPage() {
                 </div>
               </div>
 
+              {/* ... existing results display code ... */}
               {/* Selected Trainsets */}
               <div className="bg-surface border border-border rounded-lg overflow-hidden">
                 <div className="px-6 py-4 border-b border-border">

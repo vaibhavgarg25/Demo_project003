@@ -38,7 +38,7 @@ export default function LoginPage() {
     <div
       className="min-h-screen flex items-center justify-center p-6 relative"
       style={{
-        backgroundImage: "url(/metro1.jpg)",
+        backgroundImage: "url(/metro2.jpg)",
         backgroundSize: "cover",
         backgroundPosition: "center",
         backgroundRepeat: "no-repeat",
