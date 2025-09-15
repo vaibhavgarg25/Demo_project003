@@ -19,9 +19,12 @@ class TrainSimulationService:
         # Stabling bay tracking (15 bays, max 3 trains per bay)
         self.bay_occupancy = {i: [] for i in range(1, 16)}  # bay_id: [train_ids]
         
-        # Cleaning bay tracking (3 cleaning bays)
-        self.cleaning_bays = {"BAY_01": None, "BAY_02": None, "BAY_03": None}
-        self.cleaning_queue = []  # Trains waiting for cleaning
+        # Cleaning system - Only 10 trains can be in cleaning at any time
+        # 3 in_progress bays (BAY_01, BAY_02, BAY_03)
+        # 7 booked bays (BAY_04 to BAY_10)
+        self.cleaning_bays = {"BAY_01": None, "BAY_02": None, "BAY_03": None}  # in_progress bays
+        self.booking_bays = {f"BAY_{i:02d}": None for i in range(4, 11)}  # booked bays (BAY_04 to BAY_10)
+        self.cleaning_queue = []  # Not used - only 10 trains max in cleaning system
         
         # Job card tracking for maintenance duration
         self.maintenance_schedule = {}  # train_id: {"type": "brakepad", "days_remaining": 1}
@@ -31,7 +34,7 @@ class TrainSimulationService:
         
     def get_current_date(self) -> datetime:
         """Get current simulation date"""
-        return (self.simulation_start_date + timedelta(days=self.current_day))
+        return (self.simulation_start_date + timedelta(days=self.current_day + 1))  # +1 to start from next day
         
     def parse_date(self, date_str: str) -> datetime:
         """Parse date string in DD-MM-YYYY format"""
@@ -65,25 +68,59 @@ class TrainSimulationService:
                 except:
                     pass
         
-        # Initialize maintenance schedule from open job cards
+        # Initialize maintenance schedule from open job cards and wear conditions
         for _, row in df.iterrows():
             train_id = row['TrainID']
             if int(row['OpenJobCards']) > 0:
-                # Initialize with general maintenance
-                self.maintenance_schedule[train_id] = {"type": "general", "days_remaining": 1}
+                # Check what type of maintenance is needed
+                if float(row.get('BrakepadWear%', 0)) >= 80:
+                    self.maintenance_schedule[train_id] = {"type": "brakepad", "days_remaining": 1}
+                elif float(row.get('HVACWear%', 0)) >= 90:
+                    self.maintenance_schedule[train_id] = {"type": "hvac", "days_remaining": 3}
+                elif int(row.get('MileageSinceLastServiceKM', 0)) >= 10000:
+                    self.maintenance_schedule[train_id] = {"type": "service", "days_remaining": 2}
+                else:
+                    self.maintenance_schedule[train_id] = {"type": "general", "days_remaining": 1}
         
         # Initialize fitness failure tracking
         for _, row in df.iterrows():
             train_id = row['TrainID']
             failures = {}
-            if not row.get('RollingStockFitnessStatus', True):
+            
+            # Convert string to boolean if needed
+            rolling_status = row.get('RollingStockFitnessStatus', True)
+            if isinstance(rolling_status, str):
+                rolling_status = rolling_status.upper() == 'TRUE'
+            
+            signalling_status = row.get('SignallingFitnessStatus', True)
+            if isinstance(signalling_status, str):
+                signalling_status = signalling_status.upper() == 'TRUE'
+                
+            telecom_status = row.get('TelecomFitnessStatus', True)
+            if isinstance(telecom_status, str):
+                telecom_status = telecom_status.upper() == 'TRUE'
+            
+            if not rolling_status:
                 failures['rolling_stock'] = 0
-            if not row.get('SignallingFitnessStatus', True):
+            if not signalling_status:
                 failures['signalling'] = 0
-            if not row.get('TelecomFitnessStatus', True):
+            if not telecom_status:
                 failures['telecom'] = 0
+                
             if failures:
                 self.fitness_failures[train_id] = failures
+        
+        # Initialize bay occupancy from current data - ONLY for trains already in cleaning
+        for _, row in df.iterrows():
+            train_id = row['TrainID']
+            bay_id = row.get('BayOccupancyIDC')
+            cleaning_status = row.get('CleaningSlotStatus', 'free')
+            
+            # Only initialize if train is actually in cleaning system
+            if cleaning_status == 'in_progress' and bay_id in self.cleaning_bays:
+                self.cleaning_bays[bay_id] = train_id
+            elif cleaning_status == 'booked' and bay_id in self.booking_bays:
+                self.booking_bays[bay_id] = train_id
     
     
     # FITNESS CERTIFICATE MANAGEMENT
@@ -92,10 +129,23 @@ class TrainSimulationService:
         train_id = row['TrainID']
         current_date = self.get_current_date()
         
+        # Get current status (convert string to boolean if needed)
+        rolling_status = row.get('RollingStockFitnessStatus', True)
+        if isinstance(rolling_status, str):
+            rolling_status = rolling_status.upper() == 'TRUE'
+            
+        signalling_status = row.get('SignallingFitnessStatus', True)
+        if isinstance(signalling_status, str):
+            signalling_status = signalling_status.upper() == 'TRUE'
+            
+        telecom_status = row.get('TelecomFitnessStatus', True)
+        if isinstance(telecom_status, str):
+            telecom_status = telecom_status.upper() == 'TRUE'
+        
         results = {
-            'RollingStockFitnessStatus': row.get('RollingStockFitnessStatus', True),
-            'SignallingFitnessStatus': row.get('SignallingFitnessStatus', True),
-            'TelecomFitnessStatus': row.get('TelecomFitnessStatus', True),
+            'RollingStockFitnessStatus': rolling_status,
+            'SignallingFitnessStatus': signalling_status,
+            'TelecomFitnessStatus': telecom_status,
             'RollingStockFitnessExpiryDate': row.get('RollingStockFitnessExpiryDate'),
             'SignallingFitnessExpiryDate': row.get('SignallingFitnessExpiryDate'),
             'TelecomFitnessExpiryDate': row.get('TelecomFitnessExpiryDate')
@@ -113,7 +163,7 @@ class TrainSimulationService:
         if train_id not in self.fitness_failures:
             self.fitness_failures[train_id] = {}
         
-        # Rolling Stock Fitness
+        # Rolling Stock Fitness - Renewed after 4 days, valid for 2 years
         if not results['RollingStockFitnessStatus']:
             if 'rolling_stock' not in self.fitness_failures[train_id]:
                 self.fitness_failures[train_id]['rolling_stock'] = 0
@@ -128,7 +178,7 @@ class TrainSimulationService:
                 )
                 del self.fitness_failures[train_id]['rolling_stock']
         
-        # Signalling Fitness
+        # Signalling Fitness - Renewed after 5 days, valid for 5 years
         if not results['SignallingFitnessStatus']:
             if 'signalling' not in self.fitness_failures[train_id]:
                 self.fitness_failures[train_id]['signalling'] = 0
@@ -143,7 +193,7 @@ class TrainSimulationService:
                 )
                 del self.fitness_failures[train_id]['signalling']
         
-        # Telecom Fitness
+        # Telecom Fitness - Renewed after 5 days, valid for 4 years
         if not results['TelecomFitnessStatus']:
             if 'telecom' not in self.fitness_failures[train_id]:
                 self.fitness_failures[train_id]['telecom'] = 0
@@ -169,7 +219,7 @@ class TrainSimulationService:
         closed_jobs = int(row.get('ClosedJobCards', 0))
         last_update = row.get('LastJobCardUpdate')
         
-        # STEP 1: Add new job cards from various sources
+        # STEP 1: Add new job cards from various sources (before reducing existing ones)
         new_jobs = 0
         
         # 1. Fitness certificate failures (one job card for each FALSE status)
@@ -200,7 +250,11 @@ class TrainSimulationService:
         
         # 5. Cleaning required is True → one job card
         if row.get('CleaningRequired', False):
-            new_jobs += 1
+            if isinstance(row.get('CleaningRequired'), str):
+                if row.get('CleaningRequired').upper() == 'TRUE':
+                    new_jobs += 1
+            elif row.get('CleaningRequired'):
+                new_jobs += 1
         
         # Add new job cards to open jobs
         open_jobs += new_jobs
@@ -246,10 +300,11 @@ class TrainSimulationService:
             branding_active = branding_active.upper() == 'TRUE'
         
         if branding_active and campaign_id != 'NULL':
-            # Active campaign
+            # Active campaign - only increment if train is In_Service
             if operational_status == "In_Service":
-                # Add daily exposure hours (16-hour operation)
+                # Add daily exposure hours based on quota (16-hour operation)
                 exposure_hours += daily_quota
+            # If not In_Service, no increment (train under maintenance/standby doesn't count)
             
             # Check if campaign is complete
             if exposure_hours >= target_hours:
@@ -261,16 +316,15 @@ class TrainSimulationService:
                 daily_quota = 0
         else:
             # No active campaign - check if new campaign should start
-            # Campaign starts every 45 days randomly
-            if (self.current_day - self.last_campaign_assignment_day) >= 45:
-                if random.random() < 0.1:  # 10% chance per train
+            # Campaign starts every 45 days randomly to trains with BrandingActive = False
+            if (self.current_day % 45 == 0) and (self.current_day > 0):  # Every 45 days
+                if random.random() < 0.1:  # 10% chance per train per 45-day cycle
                     # Start new campaign
                     branding_active = True
                     campaign_id = self.generate_unique_campaign_id()
                     exposure_hours = 0
-                    target_hours = random.choice([280, 300, 320, 340])
-                    daily_quota = random.choice([14, 15, 16])
-                    self.last_campaign_assignment_day = self.current_day
+                    target_hours = random.choice([280, 300, 320, 340])  # Random target
+                    daily_quota = random.choice([14, 15, 16])  # Random daily quota
         
         return {
             'BrandingActive': branding_active,
@@ -295,29 +349,28 @@ class TrainSimulationService:
     def simulate_mileage(self, row: pd.Series, operational_status: str) -> Dict[str, Any]:
         """Simulate mileage according to specifications"""
         train_id = row['TrainID']
-        total_mileage = int(row.get('TotalMileageKM', 0))
-        mileage_since_service = int(row.get('MileageSinceLastServiceKM', 0))
+        total_mileage = float(row.get('TotalMileageKM', 0))
+        mileage_since_service = float(row.get('MileageSinceLastServiceKM', 0))
         
-        # Increment daily by 436.96 km
+        # Increment daily by 436.96 km (exactly as specified)
         daily_increment = 436.96
         total_mileage += daily_increment
         mileage_since_service += daily_increment
         
-        # Check if service is needed (10,000 km threshold)
-        if mileage_since_service >= 10000:
-            # Service will be completed after maintenance
-            if train_id in self.maintenance_schedule:
-                if (self.maintenance_schedule[train_id].get('type') == 'service' and 
-                    self.maintenance_schedule[train_id].get('days_remaining', 0) <= 0):
-                    # Service completed - reset mileage
-                    mileage_since_service = 0
-                    del self.maintenance_schedule[train_id]
+        # Handle service completion - reset mileage when service maintenance is completed
+        if train_id in self.maintenance_schedule:
+            maintenance = self.maintenance_schedule[train_id]
+            if (maintenance.get('type') == 'service' and 
+                maintenance.get('days_remaining', 0) <= 0):
+                # Service completed - reset mileage since last service
+                mileage_since_service = 0
+                del self.maintenance_schedule[train_id]
         
-        # Calculate balance variance
+        # Calculate balance variance (10,000 - MileageSinceLastService)
         mileage_balance = 10000 - mileage_since_service
         
         return {
-            'TotalMileageKM': int(total_mileage),
+            'TotalMileageKM': int(total_mileage),  # Convert to int as in original data
             'MileageSinceLastServiceKM': int(mileage_since_service),
             'MileageBalanceVariance': int(mileage_balance)
         }
@@ -330,25 +383,28 @@ class TrainSimulationService:
         brakepad_wear = float(row.get('BrakepadWear%', 0))
         hvac_wear = float(row.get('HVACWear%', 0))
         
-        # Process maintenance schedule
+        # Process maintenance schedule and decrement remaining days
         if train_id in self.maintenance_schedule:
             maintenance = self.maintenance_schedule[train_id]
             maintenance['days_remaining'] -= 1
             
+            # Check if maintenance is completed
             if maintenance['days_remaining'] <= 0:
-                # Maintenance completed
+                # Maintenance completed - reset wear accordingly
                 if maintenance['type'] == 'brakepad':
-                    brakepad_wear = 0  # Reset wear
+                    brakepad_wear = 0  # Reset brakepad wear to 0
                 elif maintenance['type'] == 'hvac':
-                    hvac_wear = 0  # Reset wear
-                # Service maintenance handled in mileage function
+                    hvac_wear = 0  # Reset HVAC wear to 0
+                # Note: Service maintenance doesn't reset wear, only mileage
                 
+                # Only remove from schedule if maintenance is actually complete
                 if maintenance['days_remaining'] <= 0:
                     del self.maintenance_schedule[train_id]
         
-        # Increase wear daily
-        brakepad_wear += 0.27  # 0.27% per day
-        hvac_wear += 0.16      # 0.16% per day
+        # Increase wear daily (only if not being reset by maintenance)
+        if train_id not in self.maintenance_schedule or self.maintenance_schedule[train_id]['type'] not in ['brakepad', 'hvac']:
+            brakepad_wear += 0.27  # Increase by 0.27% per day
+            hvac_wear += 0.16      # Increase by 0.16% per day
         
         # Cap at 100%
         brakepad_wear = min(100, brakepad_wear)
@@ -362,21 +418,19 @@ class TrainSimulationService:
     
     # CLEANING MANAGEMENT
     def simulate_cleaning(self, row: pd.Series) -> Dict[str, Any]:
-        """Simulate cleaning process according to specifications"""
+        """Simulate cleaning process with EXACTLY 10-train limit (3 in_progress + 7 booked)"""
         train_id = row['TrainID']
         last_cleaned = self.parse_date(row.get('LastCleanedDate'))
         current_date = self.get_current_date()
         
-        cleaning_required = False
+        cleaning_required = row.get('CleaningRequired', False)
+        if isinstance(cleaning_required, str):
+            cleaning_required = cleaning_required.upper() == 'TRUE'
+            
         cleaning_slot_status = row.get('CleaningSlotStatus', 'free')
         bay_occupancy = row.get('BayOccupancyIDC', 'NULL')
         
-        # Check if cleaning is required (after 3 trains are done)
-        days_since_cleaning = (current_date - last_cleaned).days
-        if days_since_cleaning > 7:  # Check based on last cleaned date
-            cleaning_required = True
-        
-        # Process current cleaning status
+        # STEP 1: Process trains currently in_progress (complete cleaning after 1 day)
         if cleaning_slot_status == 'in_progress':
             # Cleaning takes 1 day, so complete it
             cleaning_required = False
@@ -390,50 +444,79 @@ class TrainSimulationService:
                     self.cleaning_bays[bay] = None
                     break
         
-        elif cleaning_required:
-            # Check for available cleaning bay
-            available_bay = None
+        # STEP 2: Process trains currently booked (may move to in_progress)
+        elif cleaning_slot_status == 'booked':
+            # Check if can move to in_progress (if there's an available cleaning bay)
+            available_cleaning_bay = None
             for bay, occupant in self.cleaning_bays.items():
                 if occupant is None:
-                    available_bay = bay
+                    available_cleaning_bay = bay
                     break
             
-            if available_bay:
-                # Start cleaning
+            if available_cleaning_bay:
+                # Move to in_progress
                 cleaning_slot_status = 'in_progress'
-                bay_occupancy = available_bay
-                self.cleaning_bays[available_bay] = train_id
-            else:
-                # Queue for cleaning
-                cleaning_slot_status = 'booked'
-                if train_id not in self.cleaning_queue:
-                    self.cleaning_queue.append(train_id)
+                bay_occupancy = available_cleaning_bay
+                self.cleaning_bays[available_cleaning_bay] = train_id
                 
-                # Assign to highest available bay (4-10)
-                bay_occupancy = f"BAY_{random.randint(4, 10):02d}"
+                # Remove from booking bay
+                for bay, occupant in self.booking_bays.items():
+                    if occupant == train_id:
+                        self.booking_bays[bay] = None
+                        break
         
-        # Process cleaning queue
-        if cleaning_slot_status == 'booked':
-            # Check if can move to in_progress
-            available_bay = None
-            for bay, occupant in self.cleaning_bays.items():
-                if occupant is None:
-                    available_bay = bay
-                    break
+        # STEP 3: Handle new cleaning requirements - BUT ENFORCE EXACT 10-TRAIN LIMIT
+        elif cleaning_slot_status == 'free':
+            # Check if this train actually needs cleaning (after 7 days)
+            days_since_cleaning = (current_date - last_cleaned).days
+            train_needs_cleaning = days_since_cleaning > 7
             
-            if available_bay and train_id in self.cleaning_queue:
-                # Move oldest booked train to in_progress
-                if self.cleaning_queue[0] == train_id:
+            # Count current trains in cleaning system
+            total_in_cleaning = sum(1 for occupant in self.cleaning_bays.values() if occupant is not None)
+            total_booked = sum(1 for occupant in self.booking_bays.values() if occupant is not None)
+            total_in_system = total_in_cleaning + total_booked
+            
+            # STRICT ENFORCEMENT: Only allow EXACTLY 10 trains in cleaning system
+            if train_needs_cleaning and total_in_system < 10:
+                # First try to assign to in_progress bay
+                available_cleaning_bay = None
+                for bay, occupant in self.cleaning_bays.items():
+                    if occupant is None:
+                        available_cleaning_bay = bay
+                        break
+                
+                if available_cleaning_bay:
+                    # Start cleaning immediately
+                    cleaning_required = True
                     cleaning_slot_status = 'in_progress'
-                    bay_occupancy = available_bay
-                    self.cleaning_bays[available_bay] = train_id
-                    self.cleaning_queue.remove(train_id)
+                    bay_occupancy = available_cleaning_bay
+                    self.cleaning_bays[available_cleaning_bay] = train_id
+                else:
+                    # Try to assign to booking bay
+                    available_booking_bay = None
+                    for bay, occupant in self.booking_bays.items():
+                        if occupant is None:
+                            available_booking_bay = bay
+                            break
+                    
+                    if available_booking_bay:
+                        # Book for cleaning
+                        cleaning_required = True
+                        cleaning_slot_status = 'booked'
+                        bay_occupancy = available_booking_bay
+                        self.booking_bays[available_booking_bay] = train_id
+            else:
+                # Either train doesn't need cleaning OR system is at capacity
+                # Force CleaningRequired = False for trains not in the cleaning system
+                cleaning_required = False
+                cleaning_slot_status = 'free'
+                bay_occupancy = 'NULL'
         
         return {
             'CleaningRequired': cleaning_required,
             'CleaningSlotStatus': cleaning_slot_status,
             'BayOccupancyIDC': bay_occupancy,
-            'LastCleanedDate': row.get('LastCleanedDate') if cleaning_slot_status != 'free' else last_cleaned
+            'LastCleanedDate': last_cleaned if cleaning_slot_status in ['booked', 'in_progress'] else self.format_date(current_date) if cleaning_slot_status == 'free' and not cleaning_required else row.get('LastCleanedDate')
         }
     
     
@@ -462,40 +545,218 @@ class TrainSimulationService:
         }
     
     # OPERATIONAL STATUS DETERMINATION
-    def determine_operational_status(self, row: pd.Series, fitness_results: Dict, job_results: Dict, wear_results: Dict) -> str:
+    def determine_operational_status(self, row: pd.Series, fitness_results: Dict, job_results: Dict, wear_results: Dict, cleaning_results: Dict) -> str:
         """Determine operational status based on priority rules"""
         train_id = row['TrainID']
         
-        # Priority 1: If one of the fitness certificates is FALSE -> Standby
+        # Priority 1: If one of the fitness certificates is FALSE → Standby
+        # This takes precedence over everything else
         if (not fitness_results['RollingStockFitnessStatus'] or 
             not fitness_results['SignallingFitnessStatus'] or 
             not fitness_results['TelecomFitnessStatus']):
             return "Standby"
         
-        # Priority 2: If cleaning is in_progress -> Under_Maintenance
-        if row.get('CleaningSlotStatus') == 'in_progress':
+        # Priority 2: If cleaning is in_progress → Under_Maintenance
+        if cleaning_results.get('CleaningSlotStatus') == 'in_progress':
             return "Under_Maintenance"
         
-        # Priority 3: Check maintenance schedule
-        if train_id in self.maintenance_schedule:
-            maintenance = self.maintenance_schedule[train_id]
-            if maintenance['type'] == 'brakepad':
-                return "Under_Maintenance"  # 1 day for brakepad
-            elif maintenance['type'] == 'hvac':
-                return "Under_Maintenance"  # 3 days for HVAC
-            elif maintenance['type'] == 'service':
-                return "Under_Maintenance"  # 2 days for service
-        
-        # Priority 4: If brakepad wear >= 80% -> Standby for 1 day then Under_Maintenance
+        # Priority 3: If brakepad wear >= 80% → Under_Maintenance (standby for 1 day)
         if wear_results['BrakepadWear%'] >= 80:
             return "Under_Maintenance"
         
-        # Priority 5: If HVAC >= 90% -> Standby for 3 days then Under_Maintenance
+        # Priority 4: If HVAC >= 90% → Under_Maintenance (standby for 3 days)
         if wear_results['HVACWear%'] >= 90:
             return "Under_Maintenance"
         
-        # Default
+        # Priority 5: Check maintenance schedule for other maintenance
+        if train_id in self.maintenance_schedule:
+            return "Under_Maintenance"
+        
+        # Default: In_Service (when all fitness certificates are TRUE and no maintenance)
         return "In_Service"
+    
+    def enforce_exact_cleaning_limit(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Enforce exactly 10 trains in cleaning system (3 in_progress + 7 booked)"""
+        df_copy = df.copy()
+        
+        # Convert CleaningRequired to boolean
+        df_copy['CleaningRequired_bool'] = df_copy['CleaningRequired'].apply(
+            lambda x: x == 'TRUE' if isinstance(x, str) else bool(x)
+        )
+        
+        # Count current cleaning system usage
+        in_progress_trains = df_copy[df_copy['CleaningSlotStatus'] == 'in_progress']
+        booked_trains = df_copy[df_copy['CleaningSlotStatus'] == 'booked']
+        
+        current_in_progress = len(in_progress_trains)
+        current_booked = len(booked_trains)
+        current_total = current_in_progress + current_booked
+        
+        print(f"🧼 Enforcing cleaning limits - Current: {current_in_progress} in_progress, {current_booked} booked, {current_total} total")
+        
+        # If we have more than 10 trains in cleaning system, reduce to exactly 10
+        if current_total > 10:
+            excess = current_total - 10
+            print(f"⚠️  Reducing {excess} excess trains from cleaning system")
+            
+            # First, reduce from booked trains if we have more than 7
+            if current_booked > 7:
+                booked_excess = min(current_booked - 7, excess)
+                booked_to_free = booked_trains.head(booked_excess)
+                for idx in booked_to_free.index:
+                    df_copy.loc[idx, 'CleaningRequired'] = False
+                    df_copy.loc[idx, 'CleaningSlotStatus'] = 'free'
+                    df_copy.loc[idx, 'BayOccupancyIDC'] = 'NULL'
+                excess -= booked_excess
+            
+            # Then reduce from in_progress if needed (but keep at least some)
+            if excess > 0 and current_in_progress > 3:
+                in_progress_excess = min(current_in_progress - 3, excess)
+                in_progress_to_free = in_progress_trains.head(in_progress_excess)
+                for idx in in_progress_to_free.index:
+                    df_copy.loc[idx, 'CleaningRequired'] = False
+                    df_copy.loc[idx, 'CleaningSlotStatus'] = 'free'
+                    df_copy.loc[idx, 'BayOccupancyIDC'] = 'NULL'
+                excess -= in_progress_excess
+        
+        # If we have fewer than 10 trains in cleaning system, add more
+        elif current_total < 10:
+            needed = 10 - current_total
+            print(f"📈 Adding {needed} trains to cleaning system")
+            
+            # Find trains that could need cleaning (oldest last cleaned dates)
+            free_trains = df_copy[
+                (df_copy['CleaningSlotStatus'] == 'free') & 
+                (df_copy['CleaningRequired_bool'] == False)
+            ].copy()
+            
+            if len(free_trains) >= needed:
+                # Convert LastCleanedDate to datetime for sorting
+                free_trains['LastCleanedDate_dt'] = pd.to_datetime(
+                    free_trains['LastCleanedDate'], format='%d-%m-%Y', errors='coerce'
+                )
+                
+                # Sort by oldest cleaning date
+                oldest_trains = free_trains.nsmallest(needed, 'LastCleanedDate_dt')
+                
+                # Add to cleaning system
+                for idx in oldest_trains.index:
+                    df_copy.loc[idx, 'CleaningRequired'] = True
+                    
+                    # Assign to appropriate slot
+                    if current_in_progress < 3:
+                        df_copy.loc[idx, 'CleaningSlotStatus'] = 'in_progress'
+                        df_copy.loc[idx, 'BayOccupancyIDC'] = f'BAY_{current_in_progress + 1:02d}'
+                        current_in_progress += 1
+                    else:
+                        df_copy.loc[idx, 'CleaningSlotStatus'] = 'booked'
+                        df_copy.loc[idx, 'BayOccupancyIDC'] = f'BAY_{current_booked + 4:02d}'
+                        current_booked += 1
+        
+        # Final cleanup: ensure CleaningRequired matches cleaning slot status
+        for idx, row in df_copy.iterrows():
+            if row['CleaningSlotStatus'] in ['in_progress', 'booked']:
+                df_copy.loc[idx, 'CleaningRequired'] = True
+            elif row['CleaningSlotStatus'] == 'free':
+                df_copy.loc[idx, 'CleaningRequired'] = False
+                df_copy.loc[idx, 'BayOccupancyIDC'] = 'NULL'
+        
+        # Convert boolean back to string format
+        df_copy['CleaningRequired'] = df_copy['CleaningRequired'].apply(
+            lambda x: 'TRUE' if x else 'FALSE'
+        )
+        
+        # Drop the helper column
+        df_copy = df_copy.drop(['CleaningRequired_bool'], axis=1)
+        
+        # Verify the result
+        final_in_progress = len(df_copy[df_copy['CleaningSlotStatus'] == 'in_progress'])
+        final_booked = len(df_copy[df_copy['CleaningSlotStatus'] == 'booked'])
+        final_cleaning_required = len(df_copy[df_copy['CleaningRequired'] == 'TRUE'])
+        
+        print(f"✅ Final result: {final_in_progress} in_progress, {final_booked} booked, {final_cleaning_required} CleaningRequired=True")
+        
+        return df_copy
+    
+    def ensure_minimum_in_service_trains(self, df: pd.DataFrame, min_required: int = 13) -> pd.DataFrame:
+        """Ensure at least the minimum number of trains are In_Service"""
+        in_service_count = len(df[df['OperationalStatus'] == 'In_Service'])
+        
+        if in_service_count < min_required:
+            needed = min_required - in_service_count
+            
+            # Priority 1: Find Standby trains that can be made In_Service
+            # (But ignore fitness certificate requirements for minimum service)
+            standby_candidates = df[
+                (df['OperationalStatus'] == 'Standby') &
+                (df['CleaningSlotStatus'] != 'in_progress') &
+                (df['BrakepadWear%'] < 80) &
+                (df['HVACWear%'] < 90)
+            ]
+            
+            # Priority 2: Find Under_Maintenance trains that can be made In_Service
+            maintenance_candidates = df[
+                (df['OperationalStatus'] == 'Under_Maintenance') &
+                (df['CleaningSlotStatus'] != 'in_progress') &
+                (df['BrakepadWear%'] < 80) &
+                (df['HVACWear%'] < 90) &
+                (df['OpenJobCards'] == 0)  # Only trains without open job cards
+            ]
+            
+            # Combine candidates and take what we need
+            all_candidates = pd.concat([standby_candidates, maintenance_candidates])
+            selected_candidates = all_candidates.head(needed)
+            
+            # Update their status to In_Service
+            for idx in selected_candidates.index:
+                df.loc[idx, 'OperationalStatus'] = 'In_Service'
+                
+            actual_moved = len(selected_candidates)
+            if actual_moved > 0:
+                print(f"Moved {actual_moved} trains to In_Service to meet minimum requirement")
+            else:
+                print(f"Could not find suitable candidates to move to In_Service")
+        
+        return df
+        """Ensure at least the minimum number of trains are In_Service"""
+        in_service_count = len(df[df['OperationalStatus'] == 'In_Service'])
+        
+        if in_service_count < min_required:
+            needed = min_required - in_service_count
+            
+            # Priority 1: Find Standby trains that can be made In_Service
+            # (But ignore fitness certificate requirements for minimum service)
+            standby_candidates = df[
+                (df['OperationalStatus'] == 'Standby') &
+                (df['CleaningSlotStatus'] != 'in_progress') &
+                (df['BrakepadWear%'] < 80) &
+                (df['HVACWear%'] < 90)
+            ]
+            
+            # Priority 2: Find Under_Maintenance trains that can be made In_Service
+            maintenance_candidates = df[
+                (df['OperationalStatus'] == 'Under_Maintenance') &
+                (df['CleaningSlotStatus'] != 'in_progress') &
+                (df['BrakepadWear%'] < 80) &
+                (df['HVACWear%'] < 90) &
+                (df['OpenJobCards'] == 0)  # Only trains without open job cards
+            ]
+            
+            # Combine candidates and take what we need
+            all_candidates = pd.concat([standby_candidates, maintenance_candidates])
+            selected_candidates = all_candidates.head(needed)
+            
+            # Update their status to In_Service
+            for idx in selected_candidates.index:
+                df.loc[idx, 'OperationalStatus'] = 'In_Service'
+                
+            actual_moved = len(selected_candidates)
+            if actual_moved > 0:
+                print(f"Moved {actual_moved} trains to In_Service to meet minimum requirement")
+            else:
+                print(f"Could not find suitable candidates to move to In_Service")
+        
+        return df
     
     def simulate_single_day(self, df: pd.DataFrame) -> pd.DataFrame:
         """Simulate one day for all trains according to specifications"""
@@ -526,14 +787,14 @@ class TrainSimulationService:
             # 4. Simulate brakepad and HVAC wear
             wear_results = self.simulate_wear_and_maintenance(row)
             
-            # 5. Determine operational status
-            operational_status = self.determine_operational_status(row, fitness_results, job_results, wear_results)
-            
-            # 6. Simulate branding campaign
-            branding_results = self.simulate_branding_campaign(row, operational_status)
-            
-            # 7. Simulate cleaning
+            # 5. Simulate cleaning
             cleaning_results = self.simulate_cleaning(row)
+            
+            # 6. Determine operational status (now using cleaning_results)
+            operational_status = self.determine_operational_status(row, fitness_results, job_results, wear_results, cleaning_results)
+            
+            # 7. Simulate branding campaign
+            branding_results = self.simulate_branding_campaign(row, operational_status)
             
             # 8. Simulate stabling geometry
             stabling_results = self.simulate_stabling(row, len(df))
@@ -550,7 +811,16 @@ class TrainSimulationService:
             
             simulated_data.append(row.to_dict())
         
-        return pd.DataFrame(simulated_data)
+        # Convert to DataFrame
+        result_df = pd.DataFrame(simulated_data)
+        
+        # ENFORCE EXACT CLEANING REQUIREMENTS: 10 trains total (3 in_progress + 7 booked)
+        result_df = self.enforce_exact_cleaning_limit(result_df)
+        
+        # Ensure at least 13 trains are In_Service
+        result_df = self.ensure_minimum_in_service_trains(result_df, min_required=13)
+        
+        return result_df
     
     
     def simulate_multiple_days(self, df: pd.DataFrame, days: int) -> List[Tuple[int, pd.DataFrame]]:
