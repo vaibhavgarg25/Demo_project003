@@ -13,21 +13,16 @@ declare global {
     }
 }
 
-const JWT_SECRET = process.env.JWT_SECRET as string;
-if (!JWT_SECRET) {
-    throw new Error("JWT_SECRET environment variable is not defined");
-}
+const JWT_SECRET = process.env.JWT_SECRET as string | undefined;
 
 export const authMiddleware = (req: Request, res: Response, next: NextFunction): void => {
-    const authHeader = req.headers.authorization;
-
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        logger.warn("[authMiddleware] Missing or malformed Authorization header");
-        res.status(401).json({ message: "Unauthorized: Missing token" });
+    if (!JWT_SECRET) {
+        logger.error("[authMiddleware] JWT_SECRET environment variable is not defined");
+        res.status(500).json({ message: "Server misconfiguration: missing JWT secret" });
         return;
     }
 
-    const token = authHeader.split(" ")[1];
+    const token = req.headers.authorization?.split(" ")[1];
 
     if (!token) {
         logger.warn("[authMiddleware] Token not found in Authorization header");
