@@ -18,7 +18,7 @@ export async function login(email: string, password: string): Promise<{ success:
   const data = await response.json()
   if (response.ok) {
     if (typeof window !== "undefined") {
-      localStorage.setItem(AUTH_TOKEN_KEY!, data.token)
+      localStorage.setItem('token', data.token)
       localStorage.setItem(USER_KEY!, JSON.stringify(data.user))
     }
     return { success: true, user: data.user }
@@ -29,7 +29,7 @@ export async function login(email: string, password: string): Promise<{ success:
 
 export function logout(): void {
   if (AUTH_TOKEN_KEY) {
-    localStorage.removeItem(AUTH_TOKEN_KEY)
+    localStorage.removeItem('token')
   }
   if (USER_KEY) {
     localStorage.removeItem(USER_KEY)
@@ -37,8 +37,9 @@ export function logout(): void {
 }
 
 export function getAuthToken(): string | null {
-  if (typeof window === "undefined" || !AUTH_TOKEN_KEY) return null
-  return localStorage.getItem(AUTH_TOKEN_KEY)
+  const token=localStorage.getItem('token')
+  if (typeof window === "undefined" || !token) return null
+  return token;
 }
 
 export function getCurrentUser(): User | null {
