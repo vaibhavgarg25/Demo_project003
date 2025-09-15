@@ -15,8 +15,8 @@ export const registerUser = async (
     req: Request<unknown, unknown, RegisterUserRequestBody>,
     res: Response
 ): Promise<Response> => {
-    const { username, email, password, role } = req.body;
-    logger.info("[registerUser] Request received", { username, email, role });
+    const { name, email, password, role } = req.body;
+    logger.info("[registerUser] Request received", { name, email, role });
 
     try {
         const existingUser = await prisma.user.findUnique({
@@ -32,7 +32,7 @@ export const registerUser = async (
         logger.info("[registerUser] Password hashed");
 
         const newUser = await prisma.user.create({
-            data: { name: username, email, password: hashedPassword, role }
+            data: { name, email, password: hashedPassword, role }
         });
 
         logger.info("[registerUser] User created successfully", { userId: newUser.id });
