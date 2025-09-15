@@ -7,31 +7,11 @@ from app.api.simulation.handler import SimulationHandler
 router = APIRouter(prefix="/simulation", tags=["simulation"])
 
 def create_simulation_config(
-    days_to_simulate: int = 1,
-    daily_run_km_min: int = 250,
-    daily_run_km_max: int = 450,
-    service_interval_km: int = 10000,
-    brakepad_lifespan_km: int = 25000,
-    hvac_lifespan_hours: int = 8760,
-    cleaning_threshold_days: int = 4,
-    fitness_check_threshold_days: int = 90,
-    signalling_failure_chance: float = 0.015,
-    telecom_failure_chance: float = 0.01,
-    dirt_accumulation_chance: float = 0.06
+    days_to_simulate: int = 1
 ) -> SimulationConfig:
     """Create simulation configuration from query parameters"""
     return SimulationConfig(
-        days_to_simulate=days_to_simulate,
-        daily_run_km_min=daily_run_km_min,
-        daily_run_km_max=daily_run_km_max,
-        service_interval_km=service_interval_km,
-        brakepad_lifespan_km=brakepad_lifespan_km,
-        hvac_lifespan_hours=hvac_lifespan_hours,
-        cleaning_threshold_days=cleaning_threshold_days,
-        fitness_check_threshold_days=fitness_check_threshold_days,
-        signalling_failure_chance=signalling_failure_chance,
-        telecom_failure_chance=telecom_failure_chance,
-        dirt_accumulation_chance=dirt_accumulation_chance
+        days_to_simulate=days_to_simulate
     )
 
 @router.post(
@@ -43,23 +23,21 @@ def create_simulation_config(
     
     **Input:**
     - CSV file containing train data
-    - Simulation parameters (optional, with defaults)
+    - Number of days to simulate (optional, default: 1)
     
     **Output:**
     - Single day: CSV file (day-1.csv)
     - Multiple days: ZIP file containing CSV files for each day (day-1.csv, day-2.csv, etc.)
     
-    **Simulation Parameters:**
-    - `days_to_simulate`: Number of days to simulate (1-365, default: 1)
-    - `daily_run_km_min/max`: Daily mileage range for active trains
-    - `service_interval_km`: Kilometers between service intervals
-    - `brakepad_lifespan_km`: Brakepad replacement threshold
-    - `hvac_lifespan_hours`: HVAC system lifespan
-    - `cleaning_threshold_days`: Days before cleaning required
-    - `fitness_check_threshold_days`: Days between fitness checks
-    - `signalling_failure_chance`: Daily probability of signalling failure (0-1)
-    - `telecom_failure_chance`: Daily probability of telecom failure (0-1)
-    - `dirt_accumulation_chance`: Daily probability of dirt accumulation (0-1)
+    **Simulation Features:**
+    - Fitness certificate management (Rolling Stock: 4 days renewal, 2 years validity)
+    - Job card system (reduce by 1 per day, automatic creation for failures)
+    - Branding campaigns (16-hour operation, fixed exposure targets)
+    - Mileage tracking (436.96 km daily increment, 10,000 km service intervals)
+    - Wear simulation (Brakepad: 0.27%/day, HVAC: 0.16%/day)
+    - Cleaning management (3-bay system, 1-day cleaning cycle)
+    - Stabling geometry (15 bays, max 3 trains per bay)
+    - Operational status determination based on priority rules
     """
 )
 async def simulate_train_fleet(
