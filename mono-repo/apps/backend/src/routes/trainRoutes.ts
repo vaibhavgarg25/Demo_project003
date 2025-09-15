@@ -4,7 +4,7 @@ import { getTrainFitnessById,getTrainBrandingById,getTrainById,getTrainCleaningB
 
 const router = Router();
 
-router.get("/getTrains",authMiddleware,getTrains);
+router.get("/getTrains",getTrains);
 router.get("/getTrainFitness",authMiddleware,getTrainFitness)
 router.get("/getTrainBranding",authMiddleware,getTrainBranding)
 router.get("/getTrainCleaning",authMiddleware,getTrainCleaning)

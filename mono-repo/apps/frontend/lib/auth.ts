@@ -4,47 +4,45 @@ export interface User {
   name: string
 }
 
-const AUTH_TOKEN_KEY = "kochi_metro_auth_token"
-const USER_KEY = "kochi_metro_user"
+const AUTH_TOKEN_KEY = process.env.NEXT_PUBLIC_AUTH_TOKEN_KEY 
+const USER_KEY = process.env.NEXT_PUBLIC_USER_KEY
 
-// Demo credentials
-const DEMO_CREDENTIALS = {
-  email: "admin@kochimetro.com",
-  password: "metro2024",
-  user: {
-    id: "1",
-    email: "admin@kochimetro.com",
-    name: "Metro Administrator",
-  },
-}
-
-export function login(email: string, password: string): Promise<{ success: boolean; user?: User; error?: string }> {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      if (email === DEMO_CREDENTIALS.email && password === DEMO_CREDENTIALS.password) {
-        const token = `demo_token_${Date.now()}`
-        localStorage.setItem(AUTH_TOKEN_KEY, token)
-        localStorage.setItem(USER_KEY, JSON.stringify(DEMO_CREDENTIALS.user))
-        resolve({ success: true, user: DEMO_CREDENTIALS.user })
-      } else {
-        resolve({ success: false, error: "Invalid credentials" })
-      }
-    }, 1000) // Simulate network delay
+export async function login(email: string, password: string): Promise<{ success: boolean; user?: User; error?: string }> {
+  const response=await fetch(`${process.env.NEXT_PUBLIC_CLIENT_URL}/api/auth/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ email, password }),
   })
+  const data = await response.json()
+  if (response.ok) {
+    if (typeof window !== "undefined") {
+      localStorage.setItem(AUTH_TOKEN_KEY!, data.token)
+      localStorage.setItem(USER_KEY!, JSON.stringify(data.user))
+    }
+    return { success: true, user: data.user }
+  } else {
+    return { success: false, error: data.message || "Login failed" }
+  }
 }
 
 export function logout(): void {
-  localStorage.removeItem(AUTH_TOKEN_KEY)
-  localStorage.removeItem(USER_KEY)
+  if (AUTH_TOKEN_KEY) {
+    localStorage.removeItem(AUTH_TOKEN_KEY)
+  }
+  if (USER_KEY) {
+    localStorage.removeItem(USER_KEY)
+  }
 }
 
 export function getAuthToken(): string | null {
-  if (typeof window === "undefined") return null
+  if (typeof window === "undefined" || !AUTH_TOKEN_KEY) return null
   return localStorage.getItem(AUTH_TOKEN_KEY)
 }
 
 export function getCurrentUser(): User | null {
-  if (typeof window === "undefined") return null
+  if (typeof window === "undefined" || !USER_KEY) return null
   const userStr = localStorage.getItem(USER_KEY)
   return userStr ? JSON.parse(userStr) : null
 }
