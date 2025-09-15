@@ -30,71 +30,78 @@ export function SlideOver({ isOpen, onClose, title, trainset }: SlideOverProps) 
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="absolute right-0 top-0 h-full w-full max-w-md bg-background border-l border-border shadow-xl">
+      <div className="absolute right-0 top-0 h-full w-full max-w-md bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 shadow-xl">
         <div className="flex h-full flex-col">
           {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-border">
-            <h2 className="text-lg font-semibold text-text">{title}</h2>
+          <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{title}</h2>
             <button
               onClick={onClose}
-              className="p-2 rounded-md hover:bg-bg-hover transition-colors focus:outline-none focus:ring-2 focus:ring-text focus:ring-offset-2"
+              className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
               aria-label="Close details"
             >
-              <X className="w-5 h-5 text-text" />
+              <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
             </button>
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-white dark:bg-gray-900">
             {/* Status Overview */}
             <div className="grid grid-cols-2 gap-4">
-              <div className="bg-surface rounded-lg p-4 border border-border">
+              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
                 <div className="flex items-center gap-2 mb-2">
-                  <Calendar className="w-4 h-4 text-muted" />
-                  <span className="text-sm text-muted">Fitness Expiry</span>
+                  <Calendar className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                  <span className="text-sm text-gray-600 dark:text-gray-300">Fitness Expiry</span>
                 </div>
                 <p
-                  className={`font-medium ${fitnessExpiry !== null && fitnessExpiry < 7 ? "text-red-600 dark:text-red-400" : "text-text"}`}
+                  className={`font-medium ${fitnessExpiry !== null && fitnessExpiry < 7 ? "text-red-600 dark:text-red-400" : "text-gray-900 dark:text-white"}`}
                 >
                   {fitnessExpiry !== null ? (fitnessExpiry > 0 ? `${fitnessExpiry} days` : "Expired") : "No data"}
                 </p>
               </div>
 
-              <div className="bg-surface rounded-lg p-4 border border-border">
+              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
                 <div className="flex items-center gap-2 mb-2">
-                  <Wrench className="w-4 h-4 text-muted" />
-                  <span className="text-sm text-muted">Open Jobs</span>
+                  <Wrench className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                  <span className="text-sm text-gray-600 dark:text-gray-300">Open Jobs</span>
                 </div>
-                <p className="font-medium text-text">{openJobCards.length}</p>
+                <p className="font-medium text-gray-900 dark:text-white">{openJobCards.length}</p>
               </div>
             </div>
 
             {/* Details */}
             <div className="space-y-4">
               <div>
-                <h3 className="font-medium text-text mb-2">Details</h3>
+                <h3 className="font-medium text-gray-900 dark:text-white mb-2">Details</h3>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-muted">Mileage</span>
-                    <span className="text-text">{trainset.mileage?.toLocaleString() || 0} km</span>
+                    <span className="text-gray-600 dark:text-gray-300">Mileage</span>
+                    <span className="text-gray-900 dark:text-white">
+                      {typeof trainset.mileage === "number"
+                        ? trainset.mileage.toLocaleString()
+                        : typeof trainset.mileage === "object" && trainset.mileage?.totalMileageKM
+                          ? trainset.mileage.totalMileageKM.toLocaleString()
+                          : 0}{" "}
+                      km
+                    </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted">Position</span>
-                    <span className="text-text">{trainset.stabling_position || "N/A"}</span>
+                    <span className="text-gray-600 dark:text-gray-300">Position</span>
+                    <span className="text-gray-900 dark:text-white">{trainset.stabling_position || "N/A"}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted">Cleaning</span>
-                    <span className="text-text">{trainset.cleaning_schedule || "N/A"}</span>
+                    <span className="text-gray-600 dark:text-gray-300">Cleaning</span>
+                    <span className="text-gray-900 dark:text-white">{trainset.cleaning_schedule || "N/A"}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted">Branding</span>
-                    <span className="text-text">{trainset.branding_status || "N/A"}</span>
+                    <span className="text-gray-600 dark:text-gray-300">Branding</span>
+                    <span className="text-gray-900 dark:text-white">{trainset.branding_status || "N/A"}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted">Priority Score</span>
-                    <span className="text-text">{trainset.priority_score || 0}/100</span>
+                    <span className="text-gray-600 dark:text-gray-300">Priority Score</span>
+                    <span className="text-gray-900 dark:text-white">{trainset.priority_score || 0}/100</span>
                   </div>
                 </div>
               </div>
@@ -102,16 +109,19 @@ export function SlideOver({ isOpen, onClose, title, trainset }: SlideOverProps) 
               {/* Job Cards */}
               {openJobCards.length > 0 && (
                 <div>
-                  <h3 className="font-medium text-text mb-2">Open Job Cards</h3>
+                  <h3 className="font-medium text-gray-900 dark:text-white mb-2">Open Job Cards</h3>
                   <div className="space-y-2">
                     {openJobCards.map((job) => (
-                      <div key={job.id} className="bg-surface rounded-lg p-3 border border-border">
+                      <div
+                        key={job.id}
+                        className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700"
+                      >
                         <div className="flex items-start justify-between">
                           <div>
-                            <p className="text-sm font-medium text-text">{job.id}</p>
-                            <p className="text-xs text-muted mt-1">{job.description}</p>
+                            <p className="text-sm font-medium text-gray-900 dark:text-white">{job.id}</p>
+                            <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">{job.description}</p>
                           </div>
-                          <span className="text-xs text-muted">
+                          <span className="text-xs text-gray-600 dark:text-gray-300">
                             {job.created_at ? new Date(job.created_at).toLocaleDateString() : "N/A"}
                           </span>
                         </div>
@@ -124,9 +134,9 @@ export function SlideOver({ isOpen, onClose, title, trainset }: SlideOverProps) 
               {/* Maintenance History Chart */}
               {maintenanceChartData.length > 0 && (
                 <div>
-                  <h3 className="font-medium text-text mb-2">Maintenance History</h3>
-                  <div className="h-32 bg-surface rounded-lg border border-border p-4">
-                    <Suspense fallback={<div className="h-full bg-border rounded animate-pulse" />}>
+                  <h3 className="font-medium text-gray-900 dark:text-white mb-2">Maintenance History</h3>
+                  <div className="h-32 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+                    <Suspense fallback={<div className="h-full bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />}>
                       <AreaChart data={maintenanceChartData} />
                     </Suspense>
                   </div>
@@ -135,12 +145,12 @@ export function SlideOver({ isOpen, onClose, title, trainset }: SlideOverProps) 
             </div>
 
             {/* Actions */}
-            <div className="pt-4 border-t border-border">
+            <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
               <div className="grid grid-cols-2 gap-3">
-                <button className="px-4 py-2 bg-text text-background rounded-md text-sm font-medium hover:opacity-90 transition-opacity focus:outline-none focus:ring-2 focus:ring-text focus:ring-offset-2">
+                <button className="px-4 py-2 bg-gray-900 text-white dark:bg-white dark:text-gray-900 rounded-md text-sm font-medium hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
                   Schedule Maintenance
                 </button>
-                <button className="px-4 py-2 border border-border rounded-md text-sm font-medium text-text hover:bg-bg-hover transition-colors focus:outline-none focus:ring-2 focus:ring-text focus:ring-offset-2">
+                <button className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
                   View Full History
                 </button>
               </div>

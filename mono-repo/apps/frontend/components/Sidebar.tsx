@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useState } from "react"
-import { LayoutDashboard, Train, Calendar, BarChart3, History, Settings, Menu, X, User } from "lucide-react"
+import { LayoutDashboard, Train, Calendar, BarChart3, History, Settings, Menu, X, User,Upload } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const navigation = [
@@ -13,6 +13,7 @@ const navigation = [
   { name: "Simulation", href: "/dashboard/simulation", icon: BarChart3 },
   { name: "History", href: "/dashboard/history", icon: History },
   { name: "Settings", href: "/dashboard/settings", icon: Settings },
+  { name: "Upload", href: "/dashboard/csv-template", icon: Upload },
 ]
 
 export function Sidebar() {

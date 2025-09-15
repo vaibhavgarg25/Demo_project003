@@ -4,11 +4,14 @@ export interface User {
   name: string
 }
 
-const AUTH_TOKEN_KEY = process.env.NEXT_PUBLIC_AUTH_TOKEN_KEY 
-const USER_KEY = process.env.NEXT_PUBLIC_USER_KEY
+const AUTH_TOKEN_KEY = "token"
+const USER_KEY = "user"
 
-export async function login(email: string, password: string): Promise<{ success: boolean; user?: User; error?: string }> {
-  const response=await fetch(`${process.env.NEXT_PUBLIC_CLIENT_URL}/api/auth/login`, {
+export async function login(
+  email: string,
+  password: string,
+): Promise<{ success: boolean; user?: User; error?: string }> {
+  const response = await fetch(`${process.env.NEXT_PUBLIC_CLIENT_URL}/api/auth/login`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -18,8 +21,8 @@ export async function login(email: string, password: string): Promise<{ success:
   const data = await response.json()
   if (response.ok) {
     if (typeof window !== "undefined") {
-      localStorage.setItem('token', data.token)
-      localStorage.setItem(USER_KEY!, JSON.stringify(data.user))
+      localStorage.setItem(AUTH_TOKEN_KEY, data.token)
+      localStorage.setItem(USER_KEY, JSON.stringify(data.user))
     }
     return { success: true, user: data.user }
   } else {
@@ -28,22 +31,19 @@ export async function login(email: string, password: string): Promise<{ success:
 }
 
 export function logout(): void {
-  if (AUTH_TOKEN_KEY) {
-    localStorage.removeItem('token')
-  }
-  if (USER_KEY) {
+  if (typeof window !== "undefined") {
+    localStorage.removeItem(AUTH_TOKEN_KEY)
     localStorage.removeItem(USER_KEY)
   }
 }
 
 export function getAuthToken(): string | null {
-  const token=localStorage.getItem('token')
-  if (typeof window === "undefined" || !token) return null
-  return token;
+  if (typeof window === "undefined") return null
+  return localStorage.getItem(AUTH_TOKEN_KEY)
 }
 
 export function getCurrentUser(): User | null {
-  if (typeof window === "undefined" || !USER_KEY) return null
+  if (typeof window === "undefined") return null
   const userStr = localStorage.getItem(USER_KEY)
   return userStr ? JSON.parse(userStr) : null
 }
