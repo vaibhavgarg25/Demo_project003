@@ -19,11 +19,18 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
+app.use("/api/upload",uploadRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/train",trainRoutes);
-app.use("/api/upload",uploadRoutes);
 app.get("/", (req, res) => {
     res.send("Server is up and running");
+});
+
+// Global error handler (must be after routes and middleware)
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error("Unhandled error:", err);
+    const status = err?.status || 500;
+    res.status(status).json({ message: err?.message || "Internal Server Error" });
 });
 
 app.listen(port, () => {

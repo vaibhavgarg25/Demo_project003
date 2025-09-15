@@ -1,394 +1,417 @@
-export type JobCard = {
+// parseTrains.ts
+// Usage: ts-node parseTrains.ts http://localhost:4000 YOUR_TOKEN
+// npm i axios
+import axios from "axios"
+
+/**
+ * Minimal types for API responses. Adjust if your API has a different shape.
+ */
+type TrainRaw = {
+  id?: string
+  trainname?: string
+  trainID?: string
+  code?: string
+  trainId?: string
+  createdAt?: string
+  created_at?: string
+  created?: string
+  updatedAt?: string
+  updated_at?: string
+  updated?: string
+  status?: string
+  stabling_position?: string
+  // plus any other fields your API might return
+  [k: string]: any
+}
+
+type SubResource = { [k: string]: any }
+
+type MemorizedTrain = {
   id: string
-  status: "open" | "closed"
-  description: string
-  created_at: string
+  trainname: string
+  trainID: string
+  createdAt: string
+  updatedAt: string
+  fitness: {
+    rollingStockFitnessStatus: boolean
+    signallingFitnessStatus: boolean
+    telecomFitnessStatus: boolean
+    fitnessExpiryDate: string
+    lastFitnessCheckDate: string
+    trainId: string
+  }
+  jobCardStatus: {
+    jobCardStatus: "open" | "close" | string
+    openJobCards: number
+    closedJobCards: number
+    lastJobCardUpdate: string
+    trainId: string
+  }
+  branding: {
+    brandingActive: boolean
+    brandCampaignID: string
+    exposureHoursAccrued: number
+    exposureHoursTarget: number
+    exposureDailyQuota: number
+    trainId: string
+  }
+  mileage: {
+    totalMileageKM: number
+    mileageSinceLastServiceKM: number
+    mileageBalanceVariance: number
+    brakepadWearPercent: number
+    hvacWearPercent: number
+    trainId: string
+  }
+  cleaning: {
+    cleaningRequired: boolean
+    cleaningSlotStatus: string
+    bayOccupancyIDC: string
+    cleaningCrewAssigned: number
+    lastCleanedDate: string
+    trainId: string
+  }
+  stabling: {
+    bayPositionID: string | number
+    shuntingMovesRequired: number
+    stablingSequenceOrder: number
+    trainId: string
+  }
+  operations: {
+    operationalStatus: string
+    trainId: string
+  }
 }
 
-export type MaintenanceItem = {
-  date: string
-  duration_days: number
-  notes?: string
-}
-
-export type Fitness = {
-  expiry_date: string
-  last_check_date: string
-}
-
-export type Trainset = {
-  id: string
+/**
+ * Export the MemorizedTrain type as Trainset for backward compatibility
+ * — avoid impossible intersection where `mileage` would be both number and object.
+ */
+export type Trainset = Omit<MemorizedTrain, "mileage"> & {
+  // Legacy fields for backward compatibility
   code: string
   status: "Active" | "Standby" | "Maintenance" | "OutOfService"
-  fitness_certificate: Fitness
-  job_cards: JobCard[]
-  maintenance_history: MaintenanceItem[]
-  mileage: number
+  // Allow either the old numeric mileage or the new structured mileage object
+  mileage: number | MemorizedTrain["mileage"]
   stabling_position: string
+  fitness_certificate: {
+    expiry_date: string
+  }
+  job_cards: Array<{
+    id: string
+    status: "open" | "closed"
+    description: string
+    created_at: string
+  }>
   cleaning_schedule: string
   branding_status: string
   priority_score: number
   availability_confidence?: number
+  maintenance_history: Array<{
+    date: string
+    duration_days: number
+  }>
 }
 
-export const TRAINSETS: Trainset[] = [
-  {
-    id: "KM-001",
-    code: "T001",
-    status: "Active",
-    fitness_certificate: {
-      expiry_date: "2024-12-15",
-      last_check_date: "2024-06-15",
-    },
-    job_cards: [{ id: "JC-001", status: "open", description: "Brake system inspection", created_at: "2024-01-10" }],
-    maintenance_history: [
-      { date: "2024-01-05", duration_days: 2, notes: "Routine maintenance" },
-      { date: "2023-11-20", duration_days: 1, notes: "Door mechanism repair" },
-    ],
-    mileage: 45000,
-    stabling_position: "A1",
-    cleaning_schedule: "Daily",
-    branding_status: "Complete",
-    priority_score: 85,
-    availability_confidence: 92,
-  },
-  {
-    id: "KM-002",
-    code: "T002",
-    status: "Maintenance",
-    fitness_certificate: {
-      expiry_date: "2024-10-20",
-      last_check_date: "2024-04-20",
-    },
-    job_cards: [
-      { id: "JC-002", status: "open", description: "Engine overhaul", created_at: "2024-01-15" },
-      { id: "JC-003", status: "open", description: "AC system repair", created_at: "2024-01-18" },
-    ],
-    maintenance_history: [{ date: "2024-01-15", duration_days: 7, notes: "Major overhaul in progress" }],
-    mileage: 52000,
-    stabling_position: "B2",
-    cleaning_schedule: "Weekly",
-    branding_status: "Pending",
-    priority_score: 45,
-    availability_confidence: 60,
-  },
-  {
-    id: "KM-003",
-    code: "T003",
-    status: "Active",
-    fitness_certificate: {
-      expiry_date: "2025-03-10",
-      last_check_date: "2024-09-10",
-    },
-    job_cards: [],
-    maintenance_history: [{ date: "2023-12-01", duration_days: 1, notes: "Scheduled maintenance" }],
-    mileage: 38000,
-    stabling_position: "A3",
-    cleaning_schedule: "Daily",
-    branding_status: "Complete",
-    priority_score: 95,
-    availability_confidence: 98,
-  },
-  {
-    id: "KM-004",
-    code: "T004",
-    status: "Standby",
-    fitness_certificate: {
-      expiry_date: "2024-11-30",
-      last_check_date: "2024-05-30",
-    },
-    job_cards: [{ id: "JC-004", status: "closed", description: "Light replacement", created_at: "2023-12-20" }],
-    maintenance_history: [{ date: "2023-12-20", duration_days: 1, notes: "Light system maintenance" }],
-    mileage: 41000,
-    stabling_position: "C1",
-    cleaning_schedule: "Weekly",
-    branding_status: "Complete",
-    priority_score: 78,
-    availability_confidence: 85,
-  },
-  {
-    id: "KM-005",
-    code: "T005",
-    status: "OutOfService",
-    fitness_certificate: {
-      expiry_date: "2024-08-15",
-      last_check_date: "2024-02-15",
-    },
-    job_cards: [
-      { id: "JC-005", status: "open", description: "Fitness certificate renewal", created_at: "2024-01-20" },
-      { id: "JC-006", status: "open", description: "Safety system upgrade", created_at: "2024-01-22" },
-    ],
-    maintenance_history: [{ date: "2024-01-20", duration_days: 14, notes: "Fitness renewal process" }],
-    mileage: 58000,
-    stabling_position: "D1",
-    cleaning_schedule: "None",
-    branding_status: "Expired",
-    priority_score: 25,
-    availability_confidence: 30,
-  },
-  {
-    id: "KM-006",
-    code: "T006",
-    status: "Active",
-    fitness_certificate: {
-      expiry_date: "2025-01-20",
-      last_check_date: "2024-07-20",
-    },
-    job_cards: [],
-    maintenance_history: [{ date: "2023-11-15", duration_days: 2, notes: "Preventive maintenance" }],
-    mileage: 42000,
-    stabling_position: "A2",
-    cleaning_schedule: "Daily",
-    branding_status: "Complete",
-    priority_score: 90,
-    availability_confidence: 95,
-  },
-  {
-    id: "KM-007",
-    code: "T007",
-    status: "Maintenance",
-    fitness_certificate: {
-      expiry_date: "2024-12-05",
-      last_check_date: "2024-06-05",
-    },
-    job_cards: [{ id: "JC-007", status: "open", description: "Wheel replacement", created_at: "2024-01-25" }],
-    maintenance_history: [{ date: "2024-01-25", duration_days: 3, notes: "Wheel system maintenance" }],
-    mileage: 49000,
-    stabling_position: "B1",
-    cleaning_schedule: "Weekly",
-    branding_status: "Complete",
-    priority_score: 65,
-    availability_confidence: 70,
-  },
-  {
-    id: "KM-008",
-    code: "T008",
-    status: "Active",
-    fitness_certificate: {
-      expiry_date: "2025-02-28",
-      last_check_date: "2024-08-28",
-    },
-    job_cards: [{ id: "JC-008", status: "closed", description: "Interior cleaning", created_at: "2024-01-05" }],
-    maintenance_history: [{ date: "2024-01-05", duration_days: 1, notes: "Deep cleaning completed" }],
-    mileage: 36000,
-    stabling_position: "A4",
-    cleaning_schedule: "Daily",
-    branding_status: "Complete",
-    priority_score: 88,
-    availability_confidence: 93,
-  },
-  {
-    id: "KM-009",
-    code: "T009",
-    status: "Standby",
-    fitness_certificate: {
-      expiry_date: "2024-10-10",
-      last_check_date: "2024-04-10",
-    },
-    job_cards: [],
-    maintenance_history: [{ date: "2023-10-15", duration_days: 1, notes: "Routine check" }],
-    mileage: 44000,
-    stabling_position: "C2",
-    cleaning_schedule: "Weekly",
-    branding_status: "Complete",
-    priority_score: 82,
-    availability_confidence: 87,
-  },
-  {
-    id: "KM-010",
-    code: "T010",
-    status: "Active",
-    fitness_certificate: {
-      expiry_date: "2025-04-15",
-      last_check_date: "2024-10-15",
-    },
-    job_cards: [],
-    maintenance_history: [{ date: "2023-12-10", duration_days: 2, notes: "Scheduled maintenance" }],
-    mileage: 39000,
-    stabling_position: "A5",
-    cleaning_schedule: "Daily",
-    branding_status: "Complete",
-    priority_score: 92,
-    availability_confidence: 96,
-  },
-  {
-    id: "KM-011",
-    code: "T011",
-    status: "Maintenance",
-    fitness_certificate: {
-      expiry_date: "2024-09-30",
-      last_check_date: "2024-03-30",
-    },
-    job_cards: [
-      { id: "JC-009", status: "open", description: "Electrical system check", created_at: "2024-01-30" },
-      { id: "JC-010", status: "open", description: "Communication system upgrade", created_at: "2024-02-01" },
-    ],
-    maintenance_history: [{ date: "2024-01-30", duration_days: 5, notes: "Electrical system overhaul" }],
-    mileage: 51000,
-    stabling_position: "B3",
-    cleaning_schedule: "None",
-    branding_status: "Pending",
-    priority_score: 50,
-    availability_confidence: 65,
-  },
-  {
-    id: "KM-012",
-    code: "T012",
-    status: "Active",
-    fitness_certificate: {
-      expiry_date: "2025-01-05",
-      last_check_date: "2024-07-05",
-    },
-    job_cards: [],
-    maintenance_history: [{ date: "2023-11-25", duration_days: 1, notes: "Minor repairs" }],
-    mileage: 40000,
-    stabling_position: "A6",
-    cleaning_schedule: "Daily",
-    branding_status: "Complete",
-    priority_score: 89,
-    availability_confidence: 94,
-  },
-  {
-    id: "KM-013",
-    code: "T013",
-    status: "Standby",
-    fitness_certificate: {
-      expiry_date: "2024-11-15",
-      last_check_date: "2024-05-15",
-    },
-    job_cards: [{ id: "JC-011", status: "closed", description: "Seat repair", created_at: "2023-12-15" }],
-    maintenance_history: [{ date: "2023-12-15", duration_days: 1, notes: "Interior maintenance" }],
-    mileage: 43000,
-    stabling_position: "C3",
-    cleaning_schedule: "Weekly",
-    branding_status: "Complete",
-    priority_score: 80,
-    availability_confidence: 86,
-  },
-  {
-    id: "KM-014",
-    code: "T014",
-    status: "Active",
-    fitness_certificate: {
-      expiry_date: "2025-03-20",
-      last_check_date: "2024-09-20",
-    },
-    job_cards: [],
-    maintenance_history: [{ date: "2023-10-30", duration_days: 2, notes: "Comprehensive check" }],
-    mileage: 37000,
-    stabling_position: "A7",
-    cleaning_schedule: "Daily",
-    branding_status: "Complete",
-    priority_score: 93,
-    availability_confidence: 97,
-  },
-  {
-    id: "KM-015",
-    code: "T015",
-    status: "OutOfService",
-    fitness_certificate: {
-      expiry_date: "2024-07-25",
-      last_check_date: "2024-01-25",
-    },
-    job_cards: [
-      { id: "JC-012", status: "open", description: "Major overhaul required", created_at: "2024-02-05" },
-      { id: "JC-013", status: "open", description: "Fitness certificate expired", created_at: "2024-02-06" },
-    ],
-    maintenance_history: [{ date: "2024-02-05", duration_days: 21, notes: "Major overhaul in progress" }],
-    mileage: 62000,
-    stabling_position: "D2",
-    cleaning_schedule: "None",
-    branding_status: "Expired",
-    priority_score: 20,
-    availability_confidence: 25,
-  },
-  {
-    id: "KM-016",
-    code: "T016",
-    status: "Active",
-    fitness_certificate: {
-      expiry_date: "2025-02-10",
-      last_check_date: "2024-08-10",
-    },
-    job_cards: [],
-    maintenance_history: [{ date: "2023-12-05", duration_days: 1, notes: "Regular maintenance" }],
-    mileage: 41500,
-    stabling_position: "A8",
-    cleaning_schedule: "Daily",
-    branding_status: "Complete",
-    priority_score: 91,
-    availability_confidence: 95,
-  },
-  {
-    id: "KM-017",
-    code: "T017",
-    status: "Maintenance",
-    fitness_certificate: {
-      expiry_date: "2024-12-20",
-      last_check_date: "2024-06-20",
-    },
-    job_cards: [{ id: "JC-014", status: "open", description: "Suspension system repair", created_at: "2024-02-10" }],
-    maintenance_history: [{ date: "2024-02-10", duration_days: 4, notes: "Suspension maintenance" }],
-    mileage: 47000,
-    stabling_position: "B4",
-    cleaning_schedule: "Weekly",
-    branding_status: "Complete",
-    priority_score: 68,
-    availability_confidence: 72,
-  },
-  {
-    id: "KM-018",
-    code: "T018",
-    status: "Standby",
-    fitness_certificate: {
-      expiry_date: "2025-01-15",
-      last_check_date: "2024-07-15",
-    },
-    job_cards: [],
-    maintenance_history: [{ date: "2023-11-10", duration_days: 1, notes: "Preventive check" }],
-    mileage: 38500,
-    stabling_position: "C4",
-    cleaning_schedule: "Weekly",
-    branding_status: "Complete",
-    priority_score: 84,
-    availability_confidence: 89,
-  },
-  {
-    id: "KM-019",
-    code: "T019",
-    status: "Active",
-    fitness_certificate: {
-      expiry_date: "2025-04-05",
-      last_check_date: "2024-10-05",
-    },
-    job_cards: [],
-    maintenance_history: [{ date: "2023-09-20", duration_days: 2, notes: "Routine maintenance" }],
-    mileage: 35000,
-    stabling_position: "A9",
-    cleaning_schedule: "Daily",
-    branding_status: "Complete",
-    priority_score: 94,
-    availability_confidence: 98,
-  },
-  {
-    id: "KM-020",
-    code: "T020",
-    status: "Active",
-    fitness_certificate: {
-      expiry_date: "2025-03-25",
-      last_check_date: "2024-09-25",
-    },
-    job_cards: [{ id: "JC-015", status: "closed", description: "Window cleaning", created_at: "2024-01-12" }],
-    maintenance_history: [{ date: "2024-01-12", duration_days: 1, notes: "Cleaning and minor repairs" }],
-    mileage: 39500,
-    stabling_position: "A10",
-    cleaning_schedule: "Daily",
-    branding_status: "Complete",
-    priority_score: 87,
-    availability_confidence: 92,
-  },
-]
+/**
+ * Build memorized train object — types are permissive for inputs (Partial/SubResource)
+ */
+function buildMemorizedTrain({
+  base = {},
+  fitness = {},
+  jobCard = {},
+  branding = {},
+  mileage = {},
+  cleaning = {},
+  stabling = {},
+  operations = {},
+}: {
+  base?: Partial<TrainRaw>
+  fitness?: SubResource
+  jobCard?: SubResource
+  branding?: SubResource
+  mileage?: SubResource
+  cleaning?: SubResource
+  stabling?: SubResource
+  operations?: SubResource
+}): MemorizedTrain {
+  // ensure TS knows these can be read
+  const trainID =
+    (base && (base.trainID as string)) ||
+    (base && (base.code as string)) ||
+    (base && (base.id as string)) ||
+    (base && (base.trainId as string)) ||
+    ""
 
-export const getTrainById = (id: string): Trainset | undefined => {
-  return TRAINSETS.find((train) => train.id === id)
+  return {
+    id: (base && ((base.id as string) || trainID)) || "",
+    trainname: (base && (base.trainname as string)) || `Train-${trainID || (base && (base.id as string)) || ""}`,
+    trainID: trainID,
+    createdAt:
+      (base && (base.createdAt as string)) ||
+      (base && (base.created_at as string)) ||
+      (base && (base.created as string)) ||
+      "",
+    updatedAt:
+      (base && (base.updatedAt as string)) ||
+      (base && (base.updated_at as string)) ||
+      (base && (base.updated as string)) ||
+      "",
+    fitness: {
+      rollingStockFitnessStatus:
+        typeof fitness.rollingStockFitnessStatus === "boolean"
+          ? fitness.rollingStockFitnessStatus
+          : !!(base && base.status && (base.status as string).toLowerCase() === "active"),
+      signallingFitnessStatus:
+        typeof fitness.signallingFitnessStatus === "boolean" ? fitness.signallingFitnessStatus : true,
+      telecomFitnessStatus: typeof fitness.telecomFitnessStatus === "boolean" ? fitness.telecomFitnessStatus : true,
+      fitnessExpiryDate: fitness.fitnessExpiryDate || fitness.expiry_date || fitness.expiry || "",
+      lastFitnessCheckDate: fitness.lastFitnessCheckDate || fitness.last_check_date || fitness.lastCheck || "",
+      trainId: trainID,
+    },
+    jobCardStatus: {
+      jobCardStatus:
+        jobCard.jobCardStatus ||
+        (typeof jobCard.openJobCards === "number" && jobCard.openJobCards > 0 ? "open" : "close") ||
+        (base && (base as any).openJobCards && (base as any).openJobCards > 0 ? "open" : "close"),
+      openJobCards: jobCard.openJobCards ?? jobCard.open_jobs ?? 0,
+      closedJobCards: jobCard.closedJobCards ?? jobCard.closed_jobs ?? 0,
+      lastJobCardUpdate: jobCard.lastJobCardUpdate || jobCard.last_update || "",
+      trainId: trainID,
+    },
+    branding: {
+      brandingActive:
+        typeof branding.brandingActive === "boolean"
+          ? branding.brandingActive
+          : branding.branding_status?.toLowerCase?.() === "complete"
+            ? true
+            : !!branding.brandingActive,
+      brandCampaignID: branding.brandCampaignID || branding.brandCampaignId || branding.campaignId || "",
+      exposureHoursAccrued: branding.exposureHoursAccrued ?? branding.exposure_hours_accrued ?? 0,
+      exposureHoursTarget: branding.exposureHoursTarget ?? branding.exposure_hours_target ?? 0,
+      exposureDailyQuota: branding.exposureDailyQuota ?? branding.exposure_daily_quota ?? 0,
+      trainId: trainID,
+    },
+    mileage: {
+      totalMileageKM: mileage.totalMileageKM ?? mileage.mileage ?? mileage.total_mileage_km ?? 0,
+      mileageSinceLastServiceKM: mileage.mileageSinceLastServiceKM ?? mileage.since_last_service ?? 0,
+      mileageBalanceVariance: mileage.mileageBalanceVariance ?? 0,
+      brakepadWearPercent: mileage.brakepadWearPercent ?? mileage.brake_wear_percent ?? 0,
+      hvacWearPercent: mileage.hvacWearPercent ?? mileage.hvac_wear_percent ?? 0,
+      trainId: trainID,
+    },
+    cleaning: {
+      cleaningRequired:
+        typeof cleaning.cleaningRequired === "boolean"
+          ? cleaning.cleaningRequired
+          : cleaning.cleaning_schedule
+            ? cleaning.cleaning_schedule.toLowerCase() !== "none"
+            : true,
+      cleaningSlotStatus:
+        cleaning.cleaningSlotStatus ||
+        cleaning.cleaning_slot_status ||
+        (cleaning.cleaning_schedule &&
+        cleaning.cleaning_schedule.toLowerCase &&
+        cleaning.cleaning_schedule.toLowerCase() !== "none"
+          ? "booked"
+          : "pending"),
+      bayOccupancyIDC:
+        cleaning.bayOccupancyIDC ||
+        cleaning.bay_occupancy_idc ||
+        (base && (base.stabling_position as string)) ||
+        stabling.bayPositionID ||
+        "",
+      cleaningCrewAssigned: cleaning.cleaningCrewAssigned ?? cleaning.crew_assigned ?? 0,
+      lastCleanedDate: cleaning.lastCleanedDate || cleaning.last_cleaned_date || "",
+      trainId: trainID,
+    },
+    stabling: {
+      bayPositionID:
+        stabling.bayPositionID || stabling.bay_position_id || (base && (base.stabling_position as string)) || "",
+      shuntingMovesRequired: stabling.shuntingMovesRequired ?? stabling.shunting_moves_required ?? 0,
+      stablingSequenceOrder: stabling.stablingSequenceOrder ?? stabling.sequence_order ?? 0,
+      trainId: trainID,
+    },
+    operations: {
+      operationalStatus:
+        operations.operationalStatus || operations.status || (base && (base.status as string)) || "Unknown",
+      trainId: trainID,
+    },
+  }
+}
+
+/**
+ * Generic fetch helper
+ */
+async function fetchJson(url: string, token?: string): Promise<any> {
+  const headers = token ? { Authorization: `Bearer ${token}` } : {}
+  const res = await axios.get(url, { headers, timeout: 10_000 })
+  return res.data
+}
+
+/**
+ * Main parser
+ */
+export async function parseAllTrains(baseUrl: string, token?: string): Promise<MemorizedTrain[]> {
+  if (!baseUrl) throw new Error("baseUrl is required (e.g. https://api.example.com)")
+  const root = baseUrl.replace(/\/$/, "")
+
+  // getTrains endpoint
+  const trainsListRaw = await fetchJson(`${root}/api/train/getTrains`, token)
+
+  // unwrap common wrappers if present
+  const trainsArray: TrainRaw[] = Array.isArray(trainsListRaw)
+    ? trainsListRaw
+    : trainsListRaw?.data && Array.isArray(trainsListRaw.data)
+      ? trainsListRaw.data
+      : []
+
+  // fetch subresources for each train in parallel (settled to be robust)
+  const settled = await Promise.all(
+    trainsArray.map(async (t) => {
+      const idForEndpoints = t.id || t.code || t.trainID || t.trainId || ""
+
+      const results = await Promise.allSettled([
+        fetchJson(`${root}/api/train/getTrains`, token),
+      ])
+
+      const valuify = (p: PromiseSettledResult<any>) => (p && p.status === "fulfilled" ? p.value : {})
+
+      // Since only one resource is fetched, use empty objects for others
+      const fitness = {}
+      const jobCard = {}
+      const branding = {}
+      const mileage = {}
+      const cleaning = {}
+      const stabling = {}
+      const operations = {}
+      const fullTrain = results[0] && results[0].status === "fulfilled" ? results[0].value : t
+
+      return buildMemorizedTrain({
+        base: fullTrain,
+        fitness,
+        jobCard,
+        branding,
+        mileage,
+        cleaning,
+        stabling,
+        operations,
+      })
+    }),
+  )
+
+  return settled
+}
+
+/**
+ * Transform MemorizedTrain to legacy Trainset format
+ */
+function transformToLegacyFormat(train: MemorizedTrain): Trainset {
+  // Defensive extraction of total mileage to satisfy both type-shapes at runtime.
+  const totalMileage =
+    train &&
+    train.mileage &&
+    typeof (train.mileage as MemorizedTrain["mileage"]).totalMileageKM === "number"
+      ? (train.mileage as MemorizedTrain["mileage"]).totalMileageKM
+      : 0
+
+  return {
+    ...train,
+    code: train.trainID,
+    status: (train.operations.operationalStatus as any) || "Active",
+    // `mileage` in Trainset can be either the legacy number or the object — we set the number here
+    mileage: totalMileage,
+    stabling_position: String(train.stabling.bayPositionID ?? ""),
+    fitness_certificate: {
+      expiry_date: train.fitness.fitnessExpiryDate,
+    },
+    job_cards: [
+      // Mock job cards based on jobCardStatus
+      ...(train.jobCardStatus.openJobCards > 0
+        ? Array.from({ length: train.jobCardStatus.openJobCards }, (_, i) => ({
+            id: `JOB-${train.trainID}-${i + 1}`,
+            status: "open" as const,
+            description: `Maintenance job ${i + 1}`,
+            created_at: train.jobCardStatus.lastJobCardUpdate || new Date().toISOString(),
+          }))
+        : []),
+      ...(train.jobCardStatus.closedJobCards > 0
+        ? Array.from({ length: train.jobCardStatus.closedJobCards }, (_, i) => ({
+            id: `JOB-${train.trainID}-CLOSED-${i + 1}`,
+            status: "closed" as const,
+            description: `Completed job ${i + 1}`,
+            created_at: train.jobCardStatus.lastJobCardUpdate || new Date().toISOString(),
+          }))
+        : []),
+    ],
+    cleaning_schedule: train.cleaning.cleaningRequired ? "Daily" : "None",
+    branding_status: train.branding.brandingActive ? "Complete" : "Pending",
+    priority_score: Math.round(
+      (train.fitness.rollingStockFitnessStatus ? 30 : 0) +
+        (train.jobCardStatus.openJobCards === 0 ? 30 : 0) +
+        (train.branding.brandingActive ? 20 : 0) +
+        (train.cleaning.cleaningRequired ? 20 : 0),
+    ),
+    availability_confidence: Math.round(
+      (train.fitness.rollingStockFitnessStatus ? 25 : 0) +
+        (train.fitness.signallingFitnessStatus ? 25 : 0) +
+        (train.fitness.telecomFitnessStatus ? 25 : 0) +
+        (train.jobCardStatus.openJobCards === 0 ? 25 : 0),
+    ),
+    maintenance_history: [
+      // Mock maintenance history
+      {
+        date: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+        duration_days: 3,
+      },
+      {
+        date: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
+        duration_days: 2,
+      },
+    ],
+  }
+}
+
+/**
+ * Create API client functions
+ */
+export async function fetchTrainsets(): Promise<Trainset[]> {
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_CLIENT_URL || "http://localhost:8000"
+    const token = typeof window !== "undefined" ? localStorage.getItem('token') : null
+
+    const trains = await parseAllTrains(baseUrl, token || undefined)
+    return trains.map(transformToLegacyFormat)
+  } catch (error) {
+    console.error("Failed to fetch trainsets:", error)
+    // Return empty array on error to prevent crashes
+    return []
+  }
+}
+
+/**
+ * Export TRAINSETS as a promise for backward compatibility
+ */
+export const TRAINSETS_PROMISE = fetchTrainsets()
+
+/**
+ * For immediate use in components, export empty array initially
+ */
+export const TRAINSETS: Trainset[] = []
+
+/**
+ * Run as script (optional)
+ */
+if (require.main === module) {
+  ;(async () => {
+    const baseUrl = process.env.NEXT_PUBLIC_CLIENT_URL || "http://localhost:8000"
+    const token = typeof window !== "undefined" ? localStorage.getItem('token') || "" : ""
+    try {
+      const parsed = await parseAllTrains(baseUrl, token)
+      console.log(JSON.stringify(parsed, null, 2))
+    } catch (e: any) {
+      console.error("Error parsing trains:", e.message || e)
+      process.exit(1)
+    }
+  })()
 }

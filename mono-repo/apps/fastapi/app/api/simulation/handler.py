@@ -72,7 +72,10 @@ class SimulationHandler:
         
         for col in boolean_columns:
             if col in df_copy.columns:
-                df_copy[col] = df_copy[col].map({True: 'TRUE', False: 'FALSE'})
+                # Handle both boolean and string values
+                df_copy[col] = df_copy[col].apply(
+                    lambda x: 'TRUE' if (x is True or str(x).upper() == 'TRUE') else 'FALSE'
+                )
         
         return df_copy
     

@@ -1,11 +1,14 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
-import { TRAINSETS } from "@/lib/mock-data"
+import { fetchTrainsets, type Trainset } from "@/lib/mock-data"
 import { simulate, type SimulationParams, type SimulationResult } from "@/lib/simulation"
 
 export default function SimulationPage() {
+  const [trainsets, setTrainsets] = useState<Trainset[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [params, setParams] = useState<SimulationParams>({
     availableTrainsDelta: 0,
     maintenanceDelayDays: 0,
@@ -15,19 +18,93 @@ export default function SimulationPage() {
 
   const [result, setResult] = useState<SimulationResult | null>(null)
 
+  useEffect(() => {
+    const loadTrainsets = async () => {
+      try {
+        setLoading(true)
+        const data = await fetchTrainsets()
+        setTrainsets(data)
+        setError(null)
+      } catch (err) {
+        console.error("Failed to load trainsets:", err)
+        setError("Failed to load trainset data")
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadTrainsets()
+  }, [])
+
+  useEffect(() => {
+    if (trainsets.length > 0) {
+      const simulationResult = simulate(trainsets, params)
+      setResult(simulationResult)
+    }
+  }, [trainsets, params])
+
   const handleParamChange = (key: keyof SimulationParams, value: number) => {
     const newParams = { ...params, [key]: value }
     setParams(newParams)
 
-    // Run simulation immediately
-    const simulationResult = simulate(TRAINSETS, newParams)
-    setResult(simulationResult)
+    // Run simulation immediately if trainsets are available
+    if (trainsets.length > 0) {
+      const simulationResult = simulate(trainsets, newParams)
+      setResult(simulationResult)
+    }
   }
 
-  // Run initial simulation
-  if (!result) {
-    const initialResult = simulate(TRAINSETS, params)
-    setResult(initialResult)
+  if (loading) {
+    return (
+      <div className="space-y-8">
+        <div>
+          <h1 className="text-2xl font-bold text-text mb-2 text-balance">Fleet Simulation</h1>
+          <p className="text-muted">Model the impact of operational changes on fleet performance</p>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="space-y-6">
+            <div className="bg-surface border border-border rounded-lg p-6 animate-pulse">
+              <div className="h-6 bg-border rounded mb-4"></div>
+              <div className="space-y-6">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="space-y-2">
+                    <div className="h-4 bg-border rounded"></div>
+                    <div className="h-2 bg-border rounded"></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="lg:col-span-2">
+            <div className="bg-surface border border-border rounded-lg p-6 animate-pulse">
+              <div className="h-6 bg-border rounded mb-6"></div>
+              <div className="h-96 bg-border rounded"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-8">
+        <div>
+          <h1 className="text-2xl font-bold text-text mb-2 text-balance">Fleet Simulation</h1>
+          <p className="text-muted">Model the impact of operational changes on fleet performance</p>
+        </div>
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6">
+          <h2 className="text-lg font-semibold text-red-800 dark:text-red-200 mb-2">Error Loading Data</h2>
+          <p className="text-red-600 dark:text-red-400">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-4 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    )
   }
 
   const chartData = result

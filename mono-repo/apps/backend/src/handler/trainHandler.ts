@@ -18,8 +18,7 @@ export const getTrains = async (req: Request, res: Response): Promise<void> => {
             },
         });
         logger.info("[getTrains] Trains fetched successfully", { count: trains.length });
-        const sanitized = sanitizedTrains(trains);
-        res.status(200).json(sanitized);
+        res.status(200).json(trains);
     } catch (error: any) {
         logger.error("[getTrains] Server error", { error: error.message });
         res.status(500).json({ message: "Server error", error: error.message });

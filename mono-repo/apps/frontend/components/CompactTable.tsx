@@ -46,12 +46,14 @@ export function CompactTable({ data, onRowClick }: CompactTableProps) {
     let filtered = data.filter((trainset) => {
       const matchesSearch =
         trainset.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        trainset.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (trainset.code && trainset.code.toLowerCase().includes(searchTerm.toLowerCase())) ||
         trainset.stabling_position.toLowerCase().includes(searchTerm.toLowerCase())
 
       const matchesStatus = statusFilter === "all" || trainset.status === statusFilter
 
-      const fitnessExpiry = daysUntil(trainset.fitness_certificate.expiry_date)
+      const fitnessExpiry = trainset.fitness_certificate?.expiry_date
+        ? daysUntil(trainset.fitness_certificate.expiry_date)
+        : 999 // Default to high value if no expiry date
       const matchesFitness = fitnessFilter === 0 || fitnessExpiry <= fitnessFilter
 
       return matchesSearch && matchesStatus && matchesFitness
@@ -60,14 +62,14 @@ export function CompactTable({ data, onRowClick }: CompactTableProps) {
     // Sort data
     if (sortKey === "fitnessExpiry") {
       filtered = filtered.sort((a, b) => {
-        const aExpiry = daysUntil(a.fitness_certificate.expiry_date)
-        const bExpiry = daysUntil(b.fitness_certificate.expiry_date)
+        const aExpiry = a.fitness_certificate?.expiry_date ? daysUntil(a.fitness_certificate.expiry_date) : 999
+        const bExpiry = b.fitness_certificate?.expiry_date ? daysUntil(b.fitness_certificate.expiry_date) : 999
         return sortDirection === "asc" ? aExpiry - bExpiry : bExpiry - aExpiry
       })
     } else if (sortKey === "openJobs") {
       filtered = filtered.sort((a, b) => {
-        const aJobs = a.job_cards.filter((j) => j.status === "open").length
-        const bJobs = b.job_cards.filter((j) => j.status === "open").length
+        const aJobs = a.job_cards?.filter((j) => j.status === "open").length || 0
+        const bJobs = b.job_cards?.filter((j) => j.status === "open").length || 0
         return sortDirection === "asc" ? aJobs - bJobs : bJobs - aJobs
       })
     } else {
@@ -95,6 +97,14 @@ export function CompactTable({ data, onRowClick }: CompactTableProps) {
 
   const toggleColumn = (key: SortKey) => {
     setVisibleColumns((prev) => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  if (data.length === 0) {
+    return (
+      <div className="bg-surface border border-border rounded-lg p-8 text-center">
+        <p className="text-muted">No trainset data available. Please check your API connection.</p>
+      </div>
+    )
   }
 
   return (
@@ -195,8 +205,10 @@ export function CompactTable({ data, onRowClick }: CompactTableProps) {
             </thead>
             <tbody className="divide-y divide-border">
               {paginatedData.map((trainset) => {
-                const fitnessExpiry = daysUntil(trainset.fitness_certificate.expiry_date)
-                const openJobs = trainset.job_cards.filter((j) => j.status === "open").length
+                const fitnessExpiry = trainset.fitness_certificate?.expiry_date
+                  ? daysUntil(trainset.fitness_certificate.expiry_date)
+                  : 999
+                const openJobs = trainset.job_cards?.filter((j) => j.status === "open").length || 0
 
                 return (
                   <tr
@@ -208,7 +220,7 @@ export function CompactTable({ data, onRowClick }: CompactTableProps) {
                     {visibleColumns.status && (
                       <td className="px-4 py-3">
                         <span
-                          className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${statusColors[trainset.status]}`}
+                          className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${statusColors[trainset.status] || "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400"}`}
                         >
                           {trainset.status}
                         </span>
@@ -217,7 +229,7 @@ export function CompactTable({ data, onRowClick }: CompactTableProps) {
                     {visibleColumns.fitnessExpiry && (
                       <td className="px-4 py-3 text-sm text-text">
                         <span className={fitnessExpiry < 7 ? "text-red-600 dark:text-red-400 font-medium" : ""}>
-                          {fitnessExpiry > 0 ? `${fitnessExpiry} days` : "Expired"}
+                          {fitnessExpiry < 999 ? `${fitnessExpiry} days` : "No data"}
                         </span>
                       </td>
                     )}
@@ -229,10 +241,10 @@ export function CompactTable({ data, onRowClick }: CompactTableProps) {
                       </td>
                     )}
                     {visibleColumns.mileage && (
-                      <td className="px-4 py-3 text-sm text-text">{trainset.mileage.toLocaleString()} km</td>
+                      <td className="px-4 py-3 text-sm text-text">{trainset.mileage?.toLocaleString() || 0} km</td>
                     )}
                     {visibleColumns.stabling_position && (
-                      <td className="px-4 py-3 text-sm text-text">{trainset.stabling_position}</td>
+                      <td className="px-4 py-3 text-sm text-text">{trainset.stabling_position || "N/A"}</td>
                     )}
                     <td className="px-4 py-3">
                       <button

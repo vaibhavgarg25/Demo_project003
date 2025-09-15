@@ -16,14 +16,17 @@ interface SlideOverProps {
 export function SlideOver({ isOpen, onClose, title, trainset }: SlideOverProps) {
   if (!isOpen) return null
 
-  const fitnessExpiry = daysUntil(trainset.fitness_certificate.expiry_date)
-  const openJobCards = trainset.job_cards.filter((j) => j.status === "open")
+  const fitnessExpiry = trainset.fitness_certificate?.expiry_date
+    ? daysUntil(trainset.fitness_certificate.expiry_date)
+    : null
+  const openJobCards = trainset.job_cards?.filter((j) => j.status === "open") || []
 
-  const maintenanceChartData = trainset.maintenance_history.map((item, index) => ({
-    name: `M${index + 1}`,
-    days: item.duration_days,
-    date: item.date,
-  }))
+  const maintenanceChartData =
+    trainset.maintenance_history?.map((item, index) => ({
+      name: `M${index + 1}`,
+      days: item.duration_days,
+      date: item.date,
+    })) || []
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden">
@@ -52,8 +55,10 @@ export function SlideOver({ isOpen, onClose, title, trainset }: SlideOverProps) 
                   <Calendar className="w-4 h-4 text-muted" />
                   <span className="text-sm text-muted">Fitness Expiry</span>
                 </div>
-                <p className={`font-medium ${fitnessExpiry < 7 ? "text-red-600 dark:text-red-400" : "text-text"}`}>
-                  {fitnessExpiry > 0 ? `${fitnessExpiry} days` : "Expired"}
+                <p
+                  className={`font-medium ${fitnessExpiry !== null && fitnessExpiry < 7 ? "text-red-600 dark:text-red-400" : "text-text"}`}
+                >
+                  {fitnessExpiry !== null ? (fitnessExpiry > 0 ? `${fitnessExpiry} days` : "Expired") : "No data"}
                 </p>
               </div>
 
@@ -73,23 +78,23 @@ export function SlideOver({ isOpen, onClose, title, trainset }: SlideOverProps) 
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted">Mileage</span>
-                    <span className="text-text">{trainset.mileage.toLocaleString()} km</span>
+                    <span className="text-text">{trainset.mileage?.toLocaleString() || 0} km</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted">Position</span>
-                    <span className="text-text">{trainset.stabling_position}</span>
+                    <span className="text-text">{trainset.stabling_position || "N/A"}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted">Cleaning</span>
-                    <span className="text-text">{trainset.cleaning_schedule}</span>
+                    <span className="text-text">{trainset.cleaning_schedule || "N/A"}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted">Branding</span>
-                    <span className="text-text">{trainset.branding_status}</span>
+                    <span className="text-text">{trainset.branding_status || "N/A"}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted">Priority Score</span>
-                    <span className="text-text">{trainset.priority_score}/100</span>
+                    <span className="text-text">{trainset.priority_score || 0}/100</span>
                   </div>
                 </div>
               </div>
@@ -106,7 +111,9 @@ export function SlideOver({ isOpen, onClose, title, trainset }: SlideOverProps) 
                             <p className="text-sm font-medium text-text">{job.id}</p>
                             <p className="text-xs text-muted mt-1">{job.description}</p>
                           </div>
-                          <span className="text-xs text-muted">{new Date(job.created_at).toLocaleDateString()}</span>
+                          <span className="text-xs text-muted">
+                            {job.created_at ? new Date(job.created_at).toLocaleDateString() : "N/A"}
+                          </span>
                         </div>
                       </div>
                     ))}
