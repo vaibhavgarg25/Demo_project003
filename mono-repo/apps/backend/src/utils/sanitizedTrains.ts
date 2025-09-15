@@ -1,4 +1,4 @@
-export const sanitizedTrains = (trains:any)=>{
+export const sanitizedTrains = async (trains:any)=>{
 trains.map((train:any) => ({
             id: train.id,
             trainname: train.trainname,

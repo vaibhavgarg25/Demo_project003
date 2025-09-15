@@ -272,26 +272,20 @@ export async function parseAllTrains(baseUrl: string, token?: string): Promise<M
       const idForEndpoints = t.id || t.code || t.trainID || t.trainId || ""
 
       const results = await Promise.allSettled([
-        fetchJson(`${root}/getTrainFitness/${idForEndpoints}`, token),
-        fetchJson(`${root}/getTrainJobCardStatus/${idForEndpoints}`, token),
-        fetchJson(`${root}/getTrainBranding/${idForEndpoints}`, token),
-        fetchJson(`${root}/getTrainMileage/${idForEndpoints}`, token),
-        fetchJson(`${root}/getTrainCleaning/${idForEndpoints}`, token),
-        fetchJson(`${root}/getTrainStabling/${idForEndpoints}`, token),
-        fetchJson(`${root}/getTrainOperationStatus/${idForEndpoints}`, token),
         fetchJson(`${root}/api/train/getTrains`, token),
       ])
 
       const valuify = (p: PromiseSettledResult<any>) => (p && p.status === "fulfilled" ? p.value : {})
 
-      const fitness = valuify(results[0])
-      const jobCard = valuify(results[1])
-      const branding = valuify(results[2])
-      const mileage = valuify(results[3])
-      const cleaning = valuify(results[4])
-      const stabling = valuify(results[5])
-      const operations = valuify(results[6])
-      const fullTrain = results[7] && results[7].status === "fulfilled" ? results[7].value : t
+      // Since only one resource is fetched, use empty objects for others
+      const fitness = {}
+      const jobCard = {}
+      const branding = {}
+      const mileage = {}
+      const cleaning = {}
+      const stabling = {}
+      const operations = {}
+      const fullTrain = results[0] && results[0].status === "fulfilled" ? results[0].value : t
 
       return buildMemorizedTrain({
         base: fullTrain,
@@ -384,7 +378,7 @@ function transformToLegacyFormat(train: MemorizedTrain): Trainset {
 export async function fetchTrainsets(): Promise<Trainset[]> {
   try {
     const baseUrl = process.env.NEXT_PUBLIC_CLIENT_URL || "http://localhost:8000"
-    const token = typeof window !== "undefined" ? localStorage.getItem("AUTH_TOKEN_KEY") : null
+    const token = typeof window !== "undefined" ? localStorage.getItem('token') : null
 
     const trains = await parseAllTrains(baseUrl, token || undefined)
     return trains.map(transformToLegacyFormat)
@@ -411,7 +405,7 @@ export const TRAINSETS: Trainset[] = []
 if (require.main === module) {
   ;(async () => {
     const baseUrl = process.env.NEXT_PUBLIC_CLIENT_URL || "http://localhost:8000"
-    const token = typeof window !== "undefined" ? localStorage.getItem("AUTH_TOKEN_KEY") || "" : ""
+    const token = typeof window !== "undefined" ? localStorage.getItem('token') || "" : ""
     try {
       const parsed = await parseAllTrains(baseUrl, token)
       console.log(JSON.stringify(parsed, null, 2))
