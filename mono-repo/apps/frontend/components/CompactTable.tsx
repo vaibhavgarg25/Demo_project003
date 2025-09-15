@@ -45,7 +45,7 @@ export function CompactTable({ data, onRowClick }: CompactTableProps) {
   const filteredAndSortedData = useMemo(() => {
     let filtered = data.filter((trainset) => {
       const matchesSearch =
-        trainset.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        String(trainset.id).toLowerCase().includes(searchTerm.toLowerCase()) ||
         (trainset.code && trainset.code.toLowerCase().includes(searchTerm.toLowerCase())) ||
         trainset.stabling_position.toLowerCase().includes(searchTerm.toLowerCase())
 
@@ -241,7 +241,14 @@ export function CompactTable({ data, onRowClick }: CompactTableProps) {
                       </td>
                     )}
                     {visibleColumns.mileage && (
-                      <td className="px-4 py-3 text-sm text-text">{trainset.mileage?.toLocaleString() || 0} km</td>
+                      <td className="px-4 py-3 text-sm text-text">
+                        {typeof trainset.mileage === "number"
+                          ? trainset.mileage.toLocaleString()
+                          : typeof trainset.mileage === "object" && trainset.mileage?.totalMileageKM
+                            ? trainset.mileage.totalMileageKM.toLocaleString()
+                            : 0}{" "}
+                        km
+                      </td>
                     )}
                     {visibleColumns.stabling_position && (
                       <td className="px-4 py-3 text-sm text-text">{trainset.stabling_position || "N/A"}</td>

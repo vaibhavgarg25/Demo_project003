@@ -271,9 +271,7 @@ export async function parseAllTrains(baseUrl: string, token?: string): Promise<M
     trainsArray.map(async (t) => {
       const idForEndpoints = t.id || t.code || t.trainID || t.trainId || ""
 
-      const results = await Promise.allSettled([
-        fetchJson(`${root}/api/train/getTrains`, token),
-      ])
+      const results = await Promise.allSettled([fetchJson(`${root}/api/train/getTrains`, token)])
 
       const valuify = (p: PromiseSettledResult<any>) => (p && p.status === "fulfilled" ? p.value : {})
 
@@ -309,9 +307,7 @@ export async function parseAllTrains(baseUrl: string, token?: string): Promise<M
 function transformToLegacyFormat(train: MemorizedTrain): Trainset {
   // Defensive extraction of total mileage to satisfy both type-shapes at runtime.
   const totalMileage =
-    train &&
-    train.mileage &&
-    typeof (train.mileage as MemorizedTrain["mileage"]).totalMileageKM === "number"
+    train && train.mileage && typeof (train.mileage as MemorizedTrain["mileage"]).totalMileageKM === "number"
       ? (train.mileage as MemorizedTrain["mileage"]).totalMileageKM
       : 0
 
@@ -378,15 +374,240 @@ function transformToLegacyFormat(train: MemorizedTrain): Trainset {
 export async function fetchTrainsets(): Promise<Trainset[]> {
   try {
     const baseUrl = process.env.NEXT_PUBLIC_CLIENT_URL || "http://localhost:8000"
-    const token = typeof window !== "undefined" ? localStorage.getItem('token') : null
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null
 
-    const trains = await parseAllTrains(baseUrl, token || undefined)
-    return trains.map(transformToLegacyFormat)
+    console.log("[v0] Fetching trainsets from:", `${baseUrl}/api/train/getTrains`)
+
+    const response = await fetch(`${baseUrl}/api/train/getTrains`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+    })
+
+    if (!response.ok) {
+      throw new Error(`API request failed: ${response.status} ${response.statusText}`)
+    }
+
+    const data = await response.json()
+    console.log("[v0] Raw backend data:", data)
+
+    // Transform backend data to match expected Trainset format
+    const trains = Array.isArray(data) ? data : data.data || []
+    const transformedTrains = trains.map(transformBackendDataToTrainset)
+
+    console.log("[v0] Transformed trainsets:", transformedTrains)
+    return transformedTrains
   } catch (error) {
-    console.error("Failed to fetch trainsets:", error)
-    // Return empty array on error to prevent crashes
+    console.error("[v0] Failed to fetch trainsets from backend:", error)
+
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[v0] Falling back to mock data in development mode")
+      return getMockTrainsets()
+    }
+
+    // In production, return empty array to prevent crashes
     return []
   }
+}
+
+function transformBackendDataToTrainset(backendTrain: any): Trainset {
+  console.log("[v0] Transforming backend train:", backendTrain)
+
+  const transformed = {
+    id: String(backendTrain.id || backendTrain.trainID || ""),
+    trainname: backendTrain.trainname || `Train-${backendTrain.id || backendTrain.trainID || ""}`,
+    trainID: String(backendTrain.trainID || backendTrain.id || ""),
+    code: String(backendTrain.code || backendTrain.trainID || backendTrain.id || ""),
+    status: (backendTrain.status || "Active") as "Active" | "Standby" | "Maintenance" | "OutOfService",
+    mileage: Number(backendTrain.total_mileage_km || backendTrain.mileage || 0),
+    stabling_position: String(backendTrain.stabling_position || ""),
+    createdAt: backendTrain.createdAt || backendTrain.created_at || "",
+    updatedAt: backendTrain.updatedAt || backendTrain.updated_at || "",
+
+    // Transform nested objects with proper defaults
+    fitness: {
+      rollingStockFitnessStatus: backendTrain.fitness_status === "active" || true,
+      signallingFitnessStatus: backendTrain.signalling_status === "active" || true,
+      telecomFitnessStatus: backendTrain.telecom_status === "active" || true,
+      fitnessExpiryDate: backendTrain.fitness_expiry_date || "",
+      lastFitnessCheckDate: backendTrain.last_fitness_check || "",
+      trainId: String(backendTrain.id || backendTrain.trainID || ""),
+    },
+
+    jobCardStatus: {
+      jobCardStatus: (Number(backendTrain.open_job_cards) || 0) > 0 ? "open" : "close",
+      openJobCards: Number(backendTrain.open_job_cards) || 0,
+      closedJobCards: Number(backendTrain.closed_job_cards) || 0,
+      lastJobCardUpdate: backendTrain.last_job_update || "",
+      trainId: String(backendTrain.id || backendTrain.trainID || ""),
+    },
+
+    branding: {
+      brandingActive: backendTrain.branding_status === "Complete",
+      brandCampaignID: backendTrain.brand_campaign_id || "",
+      exposureHoursAccrued: Number(backendTrain.exposure_hours) || 0,
+      exposureHoursTarget: Number(backendTrain.target_hours) || 0,
+      exposureDailyQuota: Number(backendTrain.daily_quota) || 0,
+      trainId: String(backendTrain.id || backendTrain.trainID || ""),
+    },
+
+    cleaning: {
+      cleaningRequired: backendTrain.cleaning_schedule !== "None",
+      cleaningSlotStatus: backendTrain.cleaning_status || "pending",
+      bayOccupancyIDC: String(backendTrain.stabling_position || ""),
+      cleaningCrewAssigned: Number(backendTrain.cleaning_crew) || 0,
+      lastCleanedDate: backendTrain.last_cleaned || "",
+      trainId: String(backendTrain.id || backendTrain.trainID || ""),
+    },
+
+    stabling: {
+      bayPositionID: String(backendTrain.stabling_position || ""),
+      shuntingMovesRequired: Number(backendTrain.shunting_moves) || 0,
+      stablingSequenceOrder: Number(backendTrain.sequence_order) || 0,
+      trainId: String(backendTrain.id || backendTrain.trainID || ""),
+    },
+
+    operations: {
+      operationalStatus: backendTrain.status || "Active",
+      trainId: String(backendTrain.id || backendTrain.trainID || ""),
+    },
+
+    // Legacy fields for backward compatibility
+    fitness_certificate: {
+      expiry_date: backendTrain.fitness_expiry_date || "",
+    },
+
+    job_cards: generateJobCardsFromBackend(backendTrain),
+    cleaning_schedule: backendTrain.cleaning_schedule || "Daily",
+    branding_status: backendTrain.branding_status || "Pending",
+    priority_score: calculatePriorityScore(backendTrain),
+    availability_confidence: calculateAvailabilityConfidence(backendTrain),
+    maintenance_history: Array.isArray(backendTrain.maintenance_history) ? backendTrain.maintenance_history : [],
+  }
+
+  console.log("[v0] Transformed train result:", transformed)
+  return transformed
+}
+
+function generateJobCardsFromBackend(backendTrain: any) {
+  const jobCards = []
+
+  // Generate open job cards
+  for (let i = 0; i < (backendTrain.open_job_cards || 0); i++) {
+    jobCards.push({
+      id: `JOB-${backendTrain.id}-${i + 1}`,
+      status: "open" as const,
+      description: `Maintenance job ${i + 1}`,
+      created_at: backendTrain.last_job_update || new Date().toISOString(),
+    })
+  }
+
+  // Generate closed job cards
+  for (let i = 0; i < (backendTrain.closed_job_cards || 0); i++) {
+    jobCards.push({
+      id: `JOB-${backendTrain.id}-CLOSED-${i + 1}`,
+      status: "closed" as const,
+      description: `Completed job ${i + 1}`,
+      created_at: backendTrain.last_job_update || new Date().toISOString(),
+    })
+  }
+
+  return jobCards
+}
+
+function calculatePriorityScore(backendTrain: any): number {
+  let score = 0
+
+  if (backendTrain.fitness_status === "active") score += 30
+  if ((backendTrain.open_job_cards || 0) === 0) score += 30
+  if (backendTrain.branding_status === "Complete") score += 20
+  if (backendTrain.cleaning_schedule !== "None") score += 20
+
+  return score
+}
+
+function calculateAvailabilityConfidence(backendTrain: any): number {
+  let confidence = 0
+
+  if (backendTrain.fitness_status === "active") confidence += 25
+  if (backendTrain.signalling_status === "active") confidence += 25
+  if (backendTrain.telecom_status === "active") confidence += 25
+  if ((backendTrain.open_job_cards || 0) === 0) confidence += 25
+
+  return confidence
+}
+
+function getMockTrainsets(): Trainset[] {
+  return [
+    {
+      id: "MOCK-001",
+      trainname: "Mock Train 1",
+      trainID: "MOCK-001",
+      code: "MOCK-001",
+      status: "Active",
+      mileage: 125000,
+      stabling_position: "Bay-A1",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      fitness: {
+        rollingStockFitnessStatus: true,
+        signallingFitnessStatus: true,
+        telecomFitnessStatus: true,
+        fitnessExpiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        lastFitnessCheckDate: new Date().toISOString(),
+        trainId: "MOCK-001",
+      },
+      jobCardStatus: {
+        jobCardStatus: "close",
+        openJobCards: 0,
+        closedJobCards: 2,
+        lastJobCardUpdate: new Date().toISOString(),
+        trainId: "MOCK-001",
+      },
+      branding: {
+        brandingActive: true,
+        brandCampaignID: "CAMP-001",
+        exposureHoursAccrued: 120,
+        exposureHoursTarget: 200,
+        exposureDailyQuota: 8,
+        trainId: "MOCK-001",
+      },
+      cleaning: {
+        cleaningRequired: true,
+        cleaningSlotStatus: "completed",
+        bayOccupancyIDC: "Bay-A1",
+        cleaningCrewAssigned: 2,
+        lastCleanedDate: new Date().toISOString(),
+        trainId: "MOCK-001",
+      },
+      stabling: {
+        bayPositionID: "Bay-A1",
+        shuntingMovesRequired: 0,
+        stablingSequenceOrder: 1,
+        trainId: "MOCK-001",
+      },
+      operations: {
+        operationalStatus: "Active",
+        trainId: "MOCK-001",
+      },
+      fitness_certificate: {
+        expiry_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      job_cards: [],
+      cleaning_schedule: "Daily",
+      branding_status: "Complete",
+      priority_score: 85,
+      availability_confidence: 95,
+      maintenance_history: [
+        {
+          date: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+          duration_days: 2,
+        },
+      ],
+    },
+  ]
 }
 
 /**
@@ -405,7 +626,7 @@ export const TRAINSETS: Trainset[] = []
 if (require.main === module) {
   ;(async () => {
     const baseUrl = process.env.NEXT_PUBLIC_CLIENT_URL || "http://localhost:8000"
-    const token = typeof window !== "undefined" ? localStorage.getItem('token') || "" : ""
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") || "" : ""
     try {
       const parsed = await parseAllTrains(baseUrl, token)
       console.log(JSON.stringify(parsed, null, 2))
