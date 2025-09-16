@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { ChevronUp, ChevronDown, Search, Eye, Settings } from "lucide-react"
+import { ChevronUp, ChevronDown, Eye } from "lucide-react"
 import type { Trainset } from "@/lib/mock-data"
 import { daysUntil, sortByKey } from "@/lib/utils"
 
@@ -30,54 +30,37 @@ const columns = [
 ]
 
 export function CompactTable({ data, onRowClick }: CompactTableProps) {
-  const [searchTerm, setSearchTerm] = useState("")
-  const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [fitnessFilter, setFitnessFilter] = useState<number>(0)
   const [sortKey, setSortKey] = useState<SortKey>("id")
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc")
-  const [visibleColumns, setVisibleColumns] = useState(
+  const [visibleColumns] = useState(
     columns.reduce((acc, col) => ({ ...acc, [col.key]: col.visible }), {} as Record<SortKey, boolean>),
   )
-  const [showColumnPicker, setShowColumnPicker] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
 
   const filteredAndSortedData = useMemo(() => {
-    let filtered = data.filter((trainset) => {
-      const matchesSearch =
-        String(trainset.id).toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (trainset.code && trainset.code.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        trainset.stabling_position.toLowerCase().includes(searchTerm.toLowerCase())
-
-      const matchesStatus = statusFilter === "all" || trainset.status === statusFilter
-
-      const fitnessExpiry = trainset.fitness_certificate?.expiry_date
-        ? daysUntil(trainset.fitness_certificate.expiry_date)
-        : 999 // Default to high value if no expiry date
-      const matchesFitness = fitnessFilter === 0 || fitnessExpiry <= fitnessFilter
-
-      return matchesSearch && matchesStatus && matchesFitness
-    })
+    // No search/status/fitness filtering here — the parent page provides already-filtered data if needed.
+    let working = [...data]
 
     // Sort data
     if (sortKey === "fitnessExpiry") {
-      filtered = filtered.sort((a, b) => {
+      working = working.sort((a, b) => {
         const aExpiry = a.fitness_certificate?.expiry_date ? daysUntil(a.fitness_certificate.expiry_date) : 999
         const bExpiry = b.fitness_certificate?.expiry_date ? daysUntil(b.fitness_certificate.expiry_date) : 999
         return sortDirection === "asc" ? aExpiry - bExpiry : bExpiry - aExpiry
       })
     } else if (sortKey === "openJobs") {
-      filtered = filtered.sort((a, b) => {
+      working = working.sort((a, b) => {
         const aJobs = a.job_cards?.filter((j) => j.status === "open").length || 0
         const bJobs = b.job_cards?.filter((j) => j.status === "open").length || 0
         return sortDirection === "asc" ? aJobs - bJobs : bJobs - aJobs
       })
     } else {
-      filtered = sortByKey(filtered, sortKey as keyof Trainset, sortDirection)
+      working = sortByKey(working, sortKey as keyof Trainset, sortDirection)
     }
 
-    return filtered
-  }, [data, searchTerm, statusFilter, fitnessFilter, sortKey, sortDirection])
+    return working
+  }, [data, sortKey, sortDirection])
 
   const paginatedData = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage
@@ -88,15 +71,11 @@ export function CompactTable({ data, onRowClick }: CompactTableProps) {
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
-      setSortDirection(sortDirection === "asc" ? "desc" : "asc")
+      setSortDirection((d) => (d === "asc" ? "desc" : "asc"))
     } else {
       setSortKey(key)
       setSortDirection("asc")
     }
-  }
-
-  const toggleColumn = (key: SortKey) => {
-    setVisibleColumns((prev) => ({ ...prev, [key]: !prev[key] }))
   }
 
   if (data.length === 0) {
@@ -109,70 +88,7 @@ export function CompactTable({ data, onRowClick }: CompactTableProps) {
 
   return (
     <div className="space-y-4">
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted" />
-          <input
-            type="text"
-            placeholder="Search trainsets..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-border rounded-md bg-background text-text placeholder-muted focus:outline-none focus:ring-2 focus:ring-text focus:ring-offset-2"
-          />
-        </div>
-
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-3 py-2 border border-border rounded-md bg-background text-text focus:outline-none focus:ring-2 focus:ring-text focus:ring-offset-2"
-        >
-          <option value="all">All Status</option>
-          <option value="Active">Active</option>
-          <option value="Standby">Standby</option>
-          <option value="Maintenance">Maintenance</option>
-          <option value="OutOfService">Out of Service</option>
-        </select>
-
-        <select
-          value={fitnessFilter}
-          onChange={(e) => setFitnessFilter(Number(e.target.value))}
-          className="px-3 py-2 border border-border rounded-md bg-background text-text focus:outline-none focus:ring-2 focus:ring-text focus:ring-offset-2"
-        >
-          <option value={0}>All Fitness</option>
-          <option value={7}>Expires in 7 days</option>
-          <option value={30}>Expires in 30 days</option>
-          <option value={90}>Expires in 90 days</option>
-        </select>
-
-        <div className="relative">
-          <button
-            onClick={() => setShowColumnPicker(!showColumnPicker)}
-            className="px-3 py-2 border border-border rounded-md bg-background text-text hover:bg-bg-hover transition-colors focus:outline-none focus:ring-2 focus:ring-text focus:ring-offset-2"
-          >
-            <Settings className="w-4 h-4" />
-          </button>
-
-          {showColumnPicker && (
-            <div className="absolute right-0 top-full mt-2 w-48 bg-background border border-border rounded-md shadow-lg z-10">
-              <div className="p-2">
-                <p className="text-sm font-medium text-text mb-2">Visible Columns</p>
-                {columns.map((column) => (
-                  <label key={column.key} className="flex items-center gap-2 py-1">
-                    <input
-                      type="checkbox"
-                      checked={visibleColumns[column.key]}
-                      onChange={() => toggleColumn(column.key)}
-                      className="rounded border-border"
-                    />
-                    <span className="text-sm text-text">{column.label}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+      {/* NOTE: Filters removed — expect the parent to supply already-filtered data if needed */}
 
       {/* Table */}
       <div className="bg-surface border border-border rounded-lg overflow-hidden">
@@ -216,11 +132,16 @@ export function CompactTable({ data, onRowClick }: CompactTableProps) {
                     className="hover:bg-bg-hover transition-colors cursor-pointer"
                     onClick={() => onRowClick?.(trainset)}
                   >
-                    {visibleColumns.id && <td className="px-4 py-3 text-sm font-medium text-text">{trainset.trainID}</td>}
+                    {visibleColumns.id && (
+                      <td className="px-4 py-3 text-sm font-medium text-text">{trainset.trainID}</td>
+                    )}
                     {visibleColumns.status && (
                       <td className="px-4 py-3">
                         <span
-                          className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${statusColors[trainset.status] || "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400"}`}
+                          className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                            statusColors[trainset.status] ||
+                            "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400"
+                          }`}
                         >
                           {trainset.status}
                         </span>
@@ -228,14 +149,8 @@ export function CompactTable({ data, onRowClick }: CompactTableProps) {
                     )}
                     {visibleColumns.fitnessExpiry && (
                       <td className="px-4 py-3 text-sm text-text">
-                        <span
-                          className={
-                            fitnessExpiry <= 7 ? "text-red-600 dark:text-red-400 font-medium" : ""
-                          }
-                        >
-                          {typeof fitnessExpiry === "number"
-                            ? `${Math.max(fitnessExpiry, 0)} days`
-                            : "No data"}
+                        <span className={fitnessExpiry <= 7 ? "text-red-600 dark:text-red-400 font-medium" : ""}>
+                          {typeof fitnessExpiry === "number" ? `${Math.max(fitnessExpiry, 0)} days` : "No data"}
                         </span>
                       </td>
                     )}
@@ -251,8 +166,8 @@ export function CompactTable({ data, onRowClick }: CompactTableProps) {
                         {typeof trainset.mileage === "number"
                           ? trainset.mileage.toLocaleString()
                           : typeof trainset.mileage === "object" && trainset.mileage?.totalMileageKM
-                            ? trainset.mileage.totalMileageKM.toLocaleString()
-                            : 0}{" "}
+                          ? trainset.mileage.totalMileageKM.toLocaleString()
+                          : 0}{" "}
                         km
                       </td>
                     )}
