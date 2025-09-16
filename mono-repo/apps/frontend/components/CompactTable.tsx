@@ -216,7 +216,7 @@ export function CompactTable({ data, onRowClick }: CompactTableProps) {
                     className="hover:bg-bg-hover transition-colors cursor-pointer"
                     onClick={() => onRowClick?.(trainset)}
                   >
-                    {visibleColumns.id && <td className="px-4 py-3 text-sm font-medium text-text">{trainset.id}</td>}
+                    {visibleColumns.id && <td className="px-4 py-3 text-sm font-medium text-text">{trainset.trainID}</td>}
                     {visibleColumns.status && (
                       <td className="px-4 py-3">
                         <span
@@ -228,8 +228,14 @@ export function CompactTable({ data, onRowClick }: CompactTableProps) {
                     )}
                     {visibleColumns.fitnessExpiry && (
                       <td className="px-4 py-3 text-sm text-text">
-                        <span className={fitnessExpiry < 7 ? "text-red-600 dark:text-red-400 font-medium" : ""}>
-                          {fitnessExpiry < 999 ? `${fitnessExpiry} days` : "No data"}
+                        <span
+                          className={
+                            fitnessExpiry <= 7 ? "text-red-600 dark:text-red-400 font-medium" : ""
+                          }
+                        >
+                          {typeof fitnessExpiry === "number"
+                            ? `${Math.max(fitnessExpiry, 0)} days`
+                            : "No data"}
                         </span>
                       </td>
                     )}

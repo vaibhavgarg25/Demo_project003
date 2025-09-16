@@ -18,6 +18,7 @@ export default function Dashboard() {
         setLoading(true)
         const data = await fetchTrainsets()
         setTrainsets(data)
+        console.log(data)
         setError(null)
       } catch (err) {
         console.error("Failed to load trainsets:", err)
@@ -172,7 +173,7 @@ export default function Dashboard() {
               {topRecommendations.length > 0 ? (
                 topRecommendations.map((rec) => (
                   <RecommendationCard
-                    key={rec.trainset.id}
+                    key={rec.trainset.trainID}
                     trainset={rec.trainset}
                     reason={rec.reason}
                     confidence={rec.confidence}
@@ -194,12 +195,12 @@ export default function Dashboard() {
                 {upcomingFitness.length > 0 ? (
                   upcomingFitness.map((trainset) => (
                     <div
-                      key={trainset.id}
+                      key={trainset.trainID}
                       className="p-4 flex items-center justify-between hover:bg-hover transition-colors"
                     >
                       <div>
-                        <p className="font-medium text-text">{trainset.id}</p>
-                        <p className="text-sm text-muted">{trainset.stabling_position}</p>
+                        <p className="font-medium text-text">{trainset.trainname}</p>
+                        <p className="text-sm text-muted">Stabling Position:{trainset.stabling_position}</p>
                       </div>
                       <div className="text-right">
                         <p
