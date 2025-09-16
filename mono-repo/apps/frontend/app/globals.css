@@ -75,6 +75,64 @@
   --sidebar-ring: #9ca3af;
 }
 
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Added Tailwind color mappings for trainset-specific colors */
+  --color-status-active: var(--status-active);
+  --color-status-active-foreground: var(--status-active-foreground);
+  --color-status-maintenance: var(--status-maintenance);
+  --color-status-maintenance-foreground: var(--status-maintenance-foreground);
+  --color-status-inactive: var(--status-inactive);
+  --color-status-inactive-foreground: var(--status-inactive-foreground);
+  --color-health-excellent: var(--health-excellent);
+  --color-health-good: var(--health-good);
+  --color-health-fair: var(--health-fair);
+  --color-health-poor: var(--health-poor);
+  --color-health-critical: var(--health-critical);
+  --color-progress-bg: var(--progress-bg);
+  --color-metric-positive: var(--metric-positive);
+  --color-metric-warning: var(--metric-warning);
+  --color-metric-danger: var(--metric-danger);
+}
+
 /* Font import stays the same */
 @import url("/fonts/chirp.css");
 
