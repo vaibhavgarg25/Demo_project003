@@ -4,69 +4,78 @@
 
 @import "../styles/tailwind.css";
 
-/* Updated design tokens to match professional design brief */
+/* Updated design tokens:
+   - Light mode: strict Black & White
+   - Dark mode: Black + Charcoal Gray / Silver
+*/
 :root {
-  --background: #ffffff;
-  --foreground: #4b5563;
-  --card: #f9fafb;
-  --card-foreground: #374151;
+  --background: #ffffff;            /* white */
+  --foreground: #000000;            /* black */
+  --card: #ffffff;
+  --card-foreground: #000000;
   --popover: #ffffff;
-  --popover-foreground: #4b5563;
-  --primary: #0891b2;
+  --popover-foreground: #000000;
+  --primary: #000000;               /* primary action in black (on white) */
   --primary-foreground: #ffffff;
-  --secondary: #84cc16;
-  --secondary-foreground: #374151;
-  --muted: #f9fafb;
-  --muted-foreground: #4b5563;
-  --accent: #84cc16;
+  --secondary: #111111;             /* near-black secondary */
+  --secondary-foreground: #ffffff;
+  --muted: #f8f8f8;
+  --muted-foreground: #111111;
+  --accent: #000000;
   --accent-foreground: #ffffff;
-  --destructive: #dc2626;
+  --destructive: #b91c1c;
   --destructive-foreground: #ffffff;
-  --border: #e5e7eb;
-  --input: #f0fdf4;
-  --ring: #0891b2;
+  --border: #e5e7eb;                /* subtle light border */
+  --input: #ffffff;
+  --ring: #000000;
   --radius: 0.5rem;
-  --sidebar: #f9fafb;
-  --sidebar-foreground: #374151;
+
+  /* sidebar tokens */
+  --sidebar: #ffffff;
+  --sidebar-foreground: #000000;
   --sidebar-primary: #ffffff;
-  --sidebar-primary-foreground: #4b5563;
-  --sidebar-accent: #84cc16;
+  --sidebar-primary-foreground: #000000;
+  --sidebar-accent: #000000;
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: #e5e7eb;
-  --sidebar-ring: #0891b2;
+  --sidebar-ring: #000000;
 }
 
+/* DARK MODE: Black + Charcoal Gray / Silver */
 .dark {
-  --background: #0f172a;
-  --foreground: #f1f5f9;
-  --card: #1e293b;
-  --card-foreground: #f1f5f9;
-  --popover: #1e293b;
-  --popover-foreground: #f1f5f9;
-  --primary: #0891b2;
-  --primary-foreground: #ffffff;
-  --secondary: #84cc16;
-  --secondary-foreground: #0f172a;
-  --muted: #1e293b;
-  --muted-foreground: #94a3b8;
-  --accent: #84cc16;
-  --accent-foreground: #0f172a;
-  --destructive: #dc2626;
-  --destructive-foreground: #ffffff;
-  --border: #334155;
-  --input: #1e293b;
-  --ring: #0891b2;
-  --sidebar: #1e293b;
-  --sidebar-foreground: #f1f5f9;
-  --sidebar-primary: #0f172a;
-  --sidebar-primary-foreground: #f1f5f9;
-  --sidebar-accent: #84cc16;
-  --sidebar-accent-foreground: #0f172a;
-  --sidebar-border: #334155;
-  --sidebar-ring: #0891b2;
+  --background: #000000;            /* true black base */
+  --foreground: #d1d5db;            /* silver/neutral gray text (#d1d5db = Tailwind gray-300) */
+  --card: #0b0b0b;                  /* near-black cards */
+  --card-foreground: #e5e7eb;       /* slightly brighter silver */
+  --popover: #0b0b0b;
+  --popover-foreground: #e5e7eb;
+  --primary: #9ca3af;               /* charcoal gray accent (#9ca3af = Tailwind gray-400) */
+  --primary-foreground: #000000;    /* black text on silver buttons */
+  --secondary: #6b7280;             /* medium gray (#6b7280 = Tailwind gray-500) */
+  --secondary-foreground: #ffffff;
+  --muted: #111111;                 /* muted background */
+  --muted-foreground: #9ca3af;      /* charcoal gray text */
+  --accent: #9ca3af;                /* charcoal/silver accent */
+  --accent-foreground: #000000;
+  --destructive: #ef4444;
+  --destructive-foreground: #000000;
+  --border: rgba(156,163,175,0.2);  /* subtle charcoal border */
+  --input: #0b0b0b;
+  --ring: #9ca3af;
+  --radius: 0.5rem;
+
+  /* sidebar tokens */
+  --sidebar: #050505;
+  --sidebar-foreground: #d1d5db;
+  --sidebar-primary: #0b0b0b;
+  --sidebar-primary-foreground: #e5e7eb;
+  --sidebar-accent: #9ca3af;
+  --sidebar-accent-foreground: #000000;
+  --sidebar-border: rgba(156,163,175,0.15);
+  --sidebar-ring: #9ca3af;
 }
 
-/* Adding Chirp font import */
+/* Font import stays the same */
 @import url("/fonts/chirp.css");
 
 body {
