@@ -40,6 +40,7 @@ model Train {
   id        Int       @id @default(autoincrement())
   trainname String    @unique
   trainID   String    @unique
+  current_date DateTime  @default(now())
   createdAt DateTime  @default(now())
   updatedAt DateTime?  @updatedAt
 
