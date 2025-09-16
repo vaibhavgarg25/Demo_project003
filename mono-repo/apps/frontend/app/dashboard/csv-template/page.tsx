@@ -20,19 +20,41 @@ type ValidationResult = {
   }
 }
 
+// Recommended headers for user guidance only. Validation will be lenient and only
+// require the minimal fields the backend needs to upsert a train: trainID, trainname.
 const TEMPLATE_HEADERS = [
   "trainID",
   "trainname",
-  "status",
-  "stabling_position",
-  "fitness_expiry_date",
-  "open_job_cards",
-  "closed_job_cards",
-  "cleaning_schedule",
-  "branding_status",
-  "total_mileage_km",
-  "brake_wear_percent",
-  "hvac_wear_percent",
+  // Optional/common fields (informational)
+  "rollingStockFitnessStatus",
+  "signallingFitnessStatus",
+  "telecomFitnessStatus",
+  "fitnessExpiryDate",
+  "lastFitnessCheckDate",
+  "jobCardStatus",
+  "openJobCards",
+  "closedJobCards",
+  "lastJobCardUpdate",
+  "brandingActive",
+  "brandCampaignID",
+  "exposureHoursAccrued",
+  "exposureHoursTarget",
+  "exposureDailyQuota",
+  "totalMileageKM",
+  "mileageSinceLastServiceKM",
+  "mileageBalanceVariance",
+  "brakepadWearPercent",
+  "hvacWearPercent",
+  "cleaningRequired",
+  "cleaningSlotStatus",
+  "bayOccupancyIDC",
+  "cleaningCrewAssigned",
+  "lastCleanedDate",
+  "bayPositionID",
+  "shuntingMovesRequired",
+  "stablingSequenceOrder",
+  "operationalStatus",
+  "reasonForStatus",
 ]
 
 export default function CSVTemplatePage() {
@@ -62,34 +84,67 @@ export default function CSVTemplatePage() {
   }
 
   const validateCSVHeaders = (headers: string[]): ValidationResult => {
-    // Normalize headers (trim whitespace and convert to lowercase for comparison)
-    const normalizedHeaders = headers.map((h) => h.trim().toLowerCase())
-    const normalizedTemplate = TEMPLATE_HEADERS.map((h) => h.toLowerCase())
+    // Match backend normalization: lowercased, non-alphanumerics removed
+    const normalize = (h: string) => h.trim().toLowerCase().replace(/[^a-z0-9]+/g, "")
+    const normalizedHeaders = headers.map((h) => normalize(h))
+
+    // Minimal required to upsert a train
+    const required = ["trainid", "trainname"]
+
+    // Known optional/canonical headers supported by backend (for info only)
+    const knownOptional = new Set([
+      "rollingstockfitnessstatus",
+      "signallingfitnessstatus",
+      "telecomfitnessstatus",
+      "rollingstockfitnessExpiryDate",
+      "signallingfitnessExpiryDate",
+      "telecomfitnessExpiryDate",
+      "jobcardstatus",
+      "openjobcards",
+      "closedjobcards",
+      "lastjobcardupdate",
+      "brandingactive",
+      "brandcampaignid",
+      "exposurehoursaccrued",
+      "exposurehourstarget",
+      "exposuredailyquota",
+      "totalmileagekm",
+      "mileagesincelastservicekm",
+      "mileagebalancevariance",
+      "brakepadwearpercent",
+      "hvacwearpercent",
+      "cleaningrequired",
+      "cleaningslotstatus",
+      "bayoccupancyidc",
+      "cleaningcrewassigned",
+      "lastcleaneddate",
+      "baypositionid",
+      "shuntingmovesrequired",
+      "stablingsequenceorder",
+      "operationalstatus",
+      "rollingstockfitnessExpiryDate",
+      "signallingfitnessExpiryDate",
+      "telecomfitnessExpiryDate",       
+      "reasonForStatus",
+    ])
 
     const errors: string[] = []
     const warnings: string[] = []
 
-    // Check for missing columns
-    const missing = normalizedTemplate.filter((h) => !normalizedHeaders.includes(h))
+    // Required columns check (only trainid, trainname)
+    const missing = required.filter((h) => !normalizedHeaders.includes(h))
 
-    // Check for extra columns
-    const extra = normalizedHeaders.filter((h) => !normalizedTemplate.includes(h))
-
-    // Check order mismatch
-    const orderMismatch =
-      normalizedHeaders.length === normalizedTemplate.length &&
-      !normalizedHeaders.every((h, i) => h === normalizedTemplate[i])
+    // Extra/unknown columns (informational only)
+    const extra = normalizedHeaders.filter(
+      (h) => !required.includes(h) && !knownOptional.has(h)
+    )
 
     if (missing.length > 0) {
       errors.push(`Missing required columns: ${missing.join(", ")}`)
     }
 
     if (extra.length > 0) {
-      warnings.push(`Extra columns found: ${extra.join(", ")}`)
-    }
-
-    if (orderMismatch && missing.length === 0) {
-      warnings.push("Column order doesn't match template (this is acceptable)")
+      warnings.push(`Unrecognized columns (will be ignored): ${extra.join(", ")}`)
     }
 
     return {
@@ -99,7 +154,7 @@ export default function CSVTemplatePage() {
       headerComparison: {
         missing,
         extra,
-        orderMismatch,
+        orderMismatch: false,
       },
     }
   }
@@ -137,7 +192,7 @@ export default function CSVTemplatePage() {
       const baseUrl = process.env.NEXT_PUBLIC_CLIENT_URL || "http://localhost:8000"
       const token = typeof window !== "undefined" ? localStorage.getItem("token") : null
 
-      const response = await fetch(`${baseUrl}/api/train/upload-csv`, {
+      const response = await fetch(`${baseUrl}/api/upload/upload`, {
         method: "POST",
         headers: {
           ...(token && { Authorization: `Bearer ${token}` }),
