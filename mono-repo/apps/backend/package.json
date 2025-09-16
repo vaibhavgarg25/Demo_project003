@@ -4,7 +4,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "dev": "nodemon --watch src --exec \"node --loader ts-node/esm src/index.ts\"",
+    "dev": "tsc && nodemon --watch src --exec \"node --loader ts-node/esm src/index.ts\"",
     "clean": "rm -rf dist generated",
     "build": "npm run clean && npx prisma generate && tsc",
     "start": "npm run build && node dist/index.js"
