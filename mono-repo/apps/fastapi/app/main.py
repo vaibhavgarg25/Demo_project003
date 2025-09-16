@@ -5,6 +5,7 @@ from app.core.config import settings
 from app.api.health.router import router as health_router
 from app.api.user.router import router as user_router
 from app.api.simulation.router import router as simulation_router
+from app.api.moo.router import router as moo_router
 
 def create_application() -> FastAPI:
     """Create FastAPI application with all configurations"""
@@ -30,8 +31,9 @@ def create_application() -> FastAPI:
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(user_router, prefix="/api/v1")
     
-    # Include new simulation router
+    # Include simulation and MOO routers
     app.include_router(simulation_router, prefix="/api/v1")
+    app.include_router(moo_router, prefix="/api/v1")
     
     return app
 
@@ -57,12 +59,14 @@ async def root():
         "features": [
             "User Management",
             "Health Monitoring", 
-            "Train Fleet Simulation"
+            "Train Fleet Simulation",
+            "Multi-Objective Optimization (MOO) Train Ranking"
         ],
         "endpoints": {
             "/api/v1/health": "Application health checks",
             "/api/v1/user": "User management operations",
             "/api/v1/simulation": "Train fleet simulation operations",
+            "/api/v1/moo": "Multi-Objective Optimization train ranking",
             "/docs": "Interactive API documentation"
         }
     }
