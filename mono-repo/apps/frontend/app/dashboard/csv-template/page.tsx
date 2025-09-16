@@ -7,7 +7,16 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { Download, Upload, FileText, CheckCircle, XCircle, AlertTriangle } from "lucide-react"
+import {
+  Download,
+  Upload,
+  FileText,
+  CheckCircle,
+  XCircle,
+  AlertTriangle,
+  FileSpreadsheet,
+  CloudUpload,
+} from "lucide-react"
 
 type ValidationResult = {
   isValid: boolean
@@ -85,7 +94,11 @@ export default function CSVTemplatePage() {
 
   const validateCSVHeaders = (headers: string[]): ValidationResult => {
     // Match backend normalization: lowercased, non-alphanumerics removed
-    const normalize = (h: string) => h.trim().toLowerCase().replace(/[^a-z0-9]+/g, "")
+    const normalize = (h: string) =>
+      h
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "")
     const normalizedHeaders = headers.map((h) => normalize(h))
 
     // Minimal required to upsert a train
@@ -96,9 +109,9 @@ export default function CSVTemplatePage() {
       "rollingstockfitnessstatus",
       "signallingfitnessstatus",
       "telecomfitnessstatus",
-      "rollingstockfitnessExpiryDate",
-      "signallingfitnessExpiryDate",
-      "telecomfitnessExpiryDate",
+      "rollingstockfitnessexpirydate",
+      "signallingfitnessexpirydate",
+      "telecomfitnessexpirydate",
       "jobcardstatus",
       "openjobcards",
       "closedjobcards",
@@ -122,10 +135,7 @@ export default function CSVTemplatePage() {
       "shuntingmovesrequired",
       "stablingsequenceorder",
       "operationalstatus",
-      "rollingstockfitnessExpiryDate",
-      "signallingfitnessExpiryDate",
-      "telecomfitnessExpiryDate",       
-      "reasonForStatus",
+      "reasonforstatus",
     ])
 
     const errors: string[] = []
@@ -135,9 +145,7 @@ export default function CSVTemplatePage() {
     const missing = required.filter((h) => !normalizedHeaders.includes(h))
 
     // Extra/unknown columns (informational only)
-    const extra = normalizedHeaders.filter(
-      (h) => !required.includes(h) && !knownOptional.has(h)
-    )
+    const extra = normalizedHeaders.filter((h) => !required.includes(h) && !knownOptional.has(h))
 
     if (missing.length > 0) {
       errors.push(`Missing required columns: ${missing.join(", ")}`)
@@ -233,55 +241,65 @@ export default function CSVTemplatePage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground mb-2 text-balance">CSV Template Management</h1>
-        <p className="text-muted-foreground">Download the official template, edit it, and upload your trainset data</p>
+    <div className="space-y-8">
+      <div className="text-center space-y-2">
+        <h1 className="text-3xl font-bold text-balance text-foreground">CSV Template Management</h1>
+        <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+          Download the official template, edit it locally, and upload your trainset data with confidence
+        </p>
       </div>
 
-      {/* Template Download Section */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="w-5 h-5" />
-            Official CSV Template
-          </CardTitle>
-          <CardDescription>
-            Download the official template with the correct column headers and sample data
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="bg-muted p-4 rounded-lg">
-              <h4 className="font-medium mb-2">Template includes these columns:</h4>
-              <div className="flex flex-wrap gap-2">
-                {TEMPLATE_HEADERS.map((header) => (
-                  <Badge key={header} variant="secondary" className="text-xs">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Template Download Card */}
+        <Card className="border-2 border-accent bg-muted">
+          <CardHeader className="text-center">
+            <div className="mx-auto w-16 h-16 bg-accent text-accent-foreground rounded-full flex items-center justify-center mb-4">
+              <FileSpreadsheet className="w-8 h-8" />
+            </div>
+            <CardTitle className="text-xl text-foreground">Official CSV Template</CardTitle>
+            <CardDescription className="text-muted-foreground">
+              Download the official template with correct column headers and sample data
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="p-4 rounded-lg bg-background border border-border">
+              <h4 className="font-semibold mb-3 text-foreground flex items-center gap-2">
+                <FileText className="w-4 h-4" />
+                Template includes these columns:
+              </h4>
+              <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto">
+                {TEMPLATE_HEADERS.slice(0, 8).map((header) => (
+                  <Badge key={header} variant="secondary" className="text-xs justify-center">
                     {header}
                   </Badge>
                 ))}
+                {TEMPLATE_HEADERS.length > 8 && (
+                  <Badge variant="outline" className="text-xs justify-center">
+                    +{TEMPLATE_HEADERS.length - 8} more
+                  </Badge>
+                )}
               </div>
             </div>
-            <Button onClick={downloadTemplate} className="w-full sm:w-auto">
-              <Download className="w-4 h-4 mr-2" />
+            <Button onClick={downloadTemplate} className="w-full bg-accent text-accent-foreground" size="lg">
+              <Download className="w-5 h-5 mr-2" />
               Download Template
             </Button>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      {/* File Upload Section */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Upload className="w-5 h-5" />
-            Upload CSV File
-          </CardTitle>
-          <CardDescription>Select your edited CSV file to upload trainset data</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="border-2 border-dashed border-border rounded-lg p-6 text-center">
+        {/* File Upload Card */}
+        <Card className="border-2 border-border bg-muted">
+          <CardHeader className="text-center">
+            <div className="mx-auto w-16 h-16 bg-foreground text-background rounded-full flex items-center justify-center mb-4">
+              <CloudUpload className="w-8 h-8" />
+            </div>
+            <CardTitle className="text-xl text-foreground">Upload CSV File</CardTitle>
+            <CardDescription className="text-muted-foreground">
+              Select your edited CSV file to upload trainset data
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="border-2 border-dashed border-border rounded-lg p-8 text-center bg-background hover:bg-muted transition-colors">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -290,124 +308,120 @@ export default function CSVTemplatePage() {
                 className="hidden"
                 id="csv-upload"
               />
-              <label htmlFor="csv-upload" className="cursor-pointer flex flex-col items-center gap-2">
-                <Upload className="w-8 h-8 text-muted-foreground" />
-                <span className="text-sm font-medium">
-                  {uploadedFile ? uploadedFile.name : "Click to select CSV file"}
-                </span>
-                <span className="text-xs text-muted-foreground">Only .csv files are accepted</span>
+              <label htmlFor="csv-upload" className="cursor-pointer flex flex-col items-center gap-3">
+                <div className="w-12 h-12 bg-muted text-muted-foreground rounded-full flex items-center justify-center">
+                  <Upload className="w-6 h-6" />
+                </div>
+                <div className="space-y-1">
+                  <span className="text-base font-medium text-foreground">
+                    {uploadedFile ? uploadedFile.name : "Click to select CSV file"}
+                  </span>
+                  <span className="text-sm text-muted-foreground block">Only .csv files are accepted</span>
+                </div>
               </label>
             </div>
 
-            {/* Validation Results */}
-            {validationResult && (
-              <div className="space-y-3">
-                {validationResult.isValid ? (
-                  <Alert className="border-green-200 bg-green-50 dark:bg-green-900/20">
-                    <CheckCircle className="w-4 h-4 text-green-600" />
-                    <AlertDescription className="text-green-800 dark:text-green-200">
-                      CSV validation passed! All required headers are present.
-                    </AlertDescription>
-                  </Alert>
-                ) : (
-                  <Alert className="border-red-200 bg-red-50 dark:bg-red-900/20">
-                    <XCircle className="w-4 h-4 text-red-600" />
-                    <AlertDescription className="text-red-800 dark:text-red-200">
-                      CSV validation failed. Please fix the following issues:
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                {/* Detailed validation results */}
-                {validationResult.errors.length > 0 && (
-                  <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg">
-                    <h4 className="font-medium text-red-800 dark:text-red-200 mb-2">Errors:</h4>
-                    <ul className="list-disc list-inside space-y-1 text-sm text-red-700 dark:text-red-300">
-                      {validationResult.errors.map((error, index) => (
-                        <li key={index}>{error}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {validationResult.warnings.length > 0 && (
-                  <div className="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-lg">
-                    <h4 className="font-medium text-yellow-800 dark:text-yellow-200 mb-2 flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4" />
-                      Warnings:
-                    </h4>
-                    <ul className="list-disc list-inside space-y-1 text-sm text-yellow-700 dark:text-yellow-300">
-                      {validationResult.warnings.map((warning, index) => (
-                        <li key={index}>{warning}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {/* Header comparison */}
-                {validationResult.headerComparison && (
-                  <div className="bg-muted p-4 rounded-lg">
-                    <h4 className="font-medium mb-3">Header Analysis:</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <h5 className="font-medium text-green-700 dark:text-green-300 mb-1">Expected Headers:</h5>
-                        <div className="space-y-1">
-                          {TEMPLATE_HEADERS.map((header) => (
-                            <div key={header} className="flex items-center gap-2">
-                              <Badge variant="outline" className="text-xs">
-                                {header}
-                              </Badge>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      <div>
-                        <h5 className="font-medium text-blue-700 dark:text-blue-300 mb-1">Your Headers:</h5>
-                        <div className="space-y-1">
-                          {uploadedFile && (
-                            <p className="text-xs text-muted-foreground">
-                              Headers from your uploaded file will be shown here after validation
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Upload Success */}
-            {uploadSuccess && (
-              <Alert className="border-green-200 bg-green-50 dark:bg-green-900/20">
-                <CheckCircle className="w-4 h-4 text-green-600" />
-                <AlertDescription className="text-green-800 dark:text-green-200">
-                  File uploaded successfully! Your trainset data has been processed.
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {/* Upload Button */}
             <Button
               onClick={handleUpload}
               disabled={!validationResult?.isValid || isUploading || uploadSuccess}
-              className="w-full sm:w-auto"
+              className="w-full bg-primary text-primary-foreground"
+              size="lg"
             >
               {isUploading ? (
                 <>
-                  <div className="w-4 h-4 mr-2 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                  <div className="w-5 h-5 mr-2 animate-spin rounded-full border-2 border-current border-t-transparent" />
                   Uploading...
                 </>
               ) : (
                 <>
-                  <Upload className="w-4 h-4 mr-2" />
+                  <Upload className="w-5 h-5 mr-2" />
                   Upload CSV
                 </>
               )}
             </Button>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Validation Results */}
+      {validationResult && (
+        <Card className="border-2 border-border bg-background">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              {validationResult.isValid ? (
+                <>
+                  <CheckCircle className="w-5 h-5 text-accent" />
+                  <span className="text-accent">Validation Successful</span>
+                </>
+              ) : (
+                <>
+                  <XCircle className="w-5 h-5 text-destructive" />
+                  <span className="text-destructive">Validation Failed</span>
+                </>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {validationResult.isValid ? (
+              <Alert className="border border-accent bg-muted">
+                <CheckCircle className="w-4 h-4 text-accent" />
+                <AlertDescription className="text-foreground">
+                  CSV validation passed! All required headers are present and your file is ready for upload.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <Alert className="border border-destructive bg-muted">
+                <XCircle className="w-4 h-4 text-destructive" />
+                <AlertDescription className="text-destructive">
+                  CSV validation failed. Please fix the following issues before uploading:
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {validationResult.errors.length > 0 && (
+              <div className="p-4 rounded-lg border border-destructive bg-muted">
+                <h4 className="font-semibold text-destructive mb-3 flex items-center gap-2">
+                  <XCircle className="w-4 h-4" />
+                  Errors that must be fixed:
+                </h4>
+                <ul className="list-disc list-inside space-y-2 text-sm text-destructive">
+                  {validationResult.errors.map((error, index) => (
+                    <li key={index}>{error}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {validationResult.warnings.length > 0 && (
+              <div className="p-4 rounded-lg border border-secondary bg-muted">
+                <h4 className="font-semibold text-secondary mb-3 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4" />
+                  Warnings (file will still be processed):
+                </h4>
+                <ul className="list-disc list-inside space-y-2 text-sm text-secondary">
+                  {validationResult.warnings.map((warning, index) => (
+                    <li key={index}>{warning}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Upload Success */}
+      {uploadSuccess && (
+        <Card className="border-2 border-accent bg-muted">
+          <CardContent className="pt-6">
+            <Alert className="border border-accent bg-transparent">
+              <CheckCircle className="w-4 h-4 text-accent" />
+              <AlertDescription className="text-foreground">
+                🎉 File uploaded successfully! Your trainset data has been processed and is now available in the system.
+              </AlertDescription>
+            </Alert>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

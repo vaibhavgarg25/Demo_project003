@@ -1,7 +1,5 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useTheme } from "next-themes"
 import { Navigation } from "@/components/Navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -14,27 +12,15 @@ import {
   Zap,
   Users,
   MapPin,
-  Clock,
   Database,
-  Sun,
-  Moon,
-  Monitor,
+  ArrowRight,
+  CheckCircle,
 } from "lucide-react"
 
 export default function FeaturesPage() {
-  const { theme, setTheme } = useTheme()
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => {
-    setMounted(true)
-    if (!theme) {
-      setTheme("dark")
-    }
-  }, [theme, setTheme])
-
   const features = [
     {
-      icon: <Train className="w-8 h-8" />,
+      icon: <Train className="w-6 h-6" />,
       title: "Fleet Management",
       description: "Comprehensive trainset monitoring and control system",
       details: [
@@ -44,9 +30,10 @@ export default function FeaturesPage() {
         "Automated compliance monitoring",
       ],
       category: "Core",
+      featured: true,
     },
     {
-      icon: <BarChart3 className="w-8 h-8" />,
+      icon: <BarChart3 className="w-6 h-6" />,
       title: "Advanced Analytics",
       description: "Data-driven insights for operational excellence",
       details: [
@@ -56,9 +43,10 @@ export default function FeaturesPage() {
         "Custom dashboard creation",
       ],
       category: "Analytics",
+      featured: true,
     },
     {
-      icon: <Calendar className="w-8 h-8" />,
+      icon: <Calendar className="w-6 h-6" />,
       title: "Smart Scheduling",
       description: "Intelligent planning and resource allocation",
       details: [
@@ -68,9 +56,10 @@ export default function FeaturesPage() {
         "Crew assignment management",
       ],
       category: "Planning",
+      featured: false,
     },
     {
-      icon: <Settings className="w-8 h-8" />,
+      icon: <Settings className="w-6 h-6" />,
       title: "System Configuration",
       description: "Flexible system setup and customization",
       details: [
@@ -80,16 +69,18 @@ export default function FeaturesPage() {
         "Multi-language support",
       ],
       category: "Configuration",
+      featured: false,
     },
     {
-      icon: <Shield className="w-8 h-8" />,
+      icon: <Shield className="w-6 h-6" />,
       title: "Security & Compliance",
       description: "Enterprise-grade security and regulatory compliance",
       details: ["End-to-end encryption", "Audit trail logging", "Compliance reporting", "Data backup and recovery"],
       category: "Security",
+      featured: false,
     },
     {
-      icon: <Zap className="w-8 h-8" />,
+      icon: <Zap className="w-6 h-6" />,
       title: "Real-time Monitoring",
       description: "Live system monitoring and instant alerts",
       details: [
@@ -99,9 +90,10 @@ export default function FeaturesPage() {
         "Performance monitoring",
       ],
       category: "Monitoring",
+      featured: true,
     },
     {
-      icon: <Users className="w-8 h-8" />,
+      icon: <Users className="w-6 h-6" />,
       title: "Team Collaboration",
       description: "Enhanced communication and coordination tools",
       details: [
@@ -111,9 +103,10 @@ export default function FeaturesPage() {
         "Video conferencing integration",
       ],
       category: "Collaboration",
+      featured: false,
     },
     {
-      icon: <MapPin className="w-8 h-8" />,
+      icon: <MapPin className="w-6 h-6" />,
       title: "Location Tracking",
       description: "GPS-enabled asset and personnel tracking",
       details: [
@@ -123,9 +116,10 @@ export default function FeaturesPage() {
         "Historical location data",
       ],
       category: "Tracking",
+      featured: false,
     },
     {
-      icon: <Database className="w-8 h-8" />,
+      icon: <Database className="w-6 h-6" />,
       title: "Data Management",
       description: "Comprehensive data storage and management",
       details: [
@@ -135,139 +129,142 @@ export default function FeaturesPage() {
         "Historical data archiving",
       ],
       category: "Data",
+      featured: false,
     },
   ]
 
-  const categoryColors = {
-    Core: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
-    Analytics: "bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100",
-    Planning: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
-    Configuration: "bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100",
-    Security: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
-    Monitoring: "bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100",
-    Collaboration: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
-    Tracking: "bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100",
-    Data: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
-  }
-
-  const ThemeToggle = () => {
-    if (!mounted) {
-      return <div className="w-10 h-10" />
-    }
-
-    return (
-      <div className="fixed top-4 right-4 z-50 flex items-center gap-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-2 shadow-lg">
-        <button
-          onClick={() => setTheme("light")}
-          className={`p-2 rounded-md transition-colors ${
-            theme === "light"
-              ? "bg-gray-900 text-white"
-              : "text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
-          }`}
-          aria-label="Light mode"
-        >
-          <Sun className="w-4 h-4" />
-        </button>
-        <button
-          onClick={() => setTheme("dark")}
-          className={`p-2 rounded-md transition-colors ${
-            theme === "dark"
-              ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
-              : "text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
-          }`}
-          aria-label="Dark mode"
-        >
-          <Moon className="w-4 h-4" />
-        </button>
-        <button
-          onClick={() => setTheme("system")}
-          className={`p-2 rounded-md transition-colors ${
-            theme === "system"
-              ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
-              : "text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
-          }`}
-          aria-label="System mode"
-        >
-          <Monitor className="w-4 h-4" />
-        </button>
-      </div>
-    )
-  }
+  const featuredFeatures = features.filter((f) => f.featured)
+  const regularFeatures = features.filter((f) => !f.featured)
 
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
-      <ThemeToggle />
 
-      <main className="pt-20 pb-12">
+      <main className="pt-20 pb-16">
         <div className="max-w-7xl mx-auto px-6">
-          {/* Header */}
-          <div className="text-center mb-16">
-            <h1 className="text-4xl lg:text-6xl font-bold text-foreground mb-6">Powerful Features</h1>
+          {/* Hero Section */}
+          <div className="text-center mb-20">
+            
+            <h1 className="text-5xl lg:text-6xl font-bold text-foreground mb-6 text-balance">
+              Advanced Features for
+              <span className="text-primary block">Modern Transit</span>
+            </h1>
             <p className="text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">
-              Discover the comprehensive suite of tools designed to streamline your metro operations, enhance
-              efficiency, and ensure reliable transit services.
+              Discover our comprehensive suite of tools designed to streamline metro operations, enhance efficiency, and
+              ensure reliable transit services.
             </p>
           </div>
 
-          {/* Features Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {features.map((feature, index) => (
-              <Card key={index} className="group hover:shadow-lg transition-all duration-300 border-border">
-                <CardHeader className="pb-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="p-3 rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
-                      {feature.icon}
-                    </div>
-                    <Badge
-                      variant="secondary"
-                      className={categoryColors[feature.category as keyof typeof categoryColors]}
-                    >
-                      {feature.category}
-                    </Badge>
-                  </div>
-                  <CardTitle className="text-xl font-semibold text-foreground">{feature.title}</CardTitle>
-                  <CardDescription className="text-muted-foreground">{feature.description}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ul className="space-y-2">
-                    {feature.details.map((detail, detailIndex) => (
-                      <li key={detailIndex} className="flex items-start gap-2 text-sm text-muted-foreground">
-                        <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 flex-shrink-0" />
-                        {detail}
-                      </li>
-                    ))}
-                  </ul>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          {/* Call to Action */}
-          <div className="text-center mt-16">
-            <div className="bg-card border border-border rounded-2xl p-8 max-w-2xl mx-auto">
-              <h2 className="text-2xl font-bold text-foreground mb-4">Ready to Transform Your Operations?</h2>
-              <p className="text-muted-foreground mb-6">
-                Experience the power of modern metro management with our comprehensive platform.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <a
-                  href="/dashboard"
-                  className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg text-sm font-semibold bg-gray-900 text-white dark:bg-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors"
-                >
-                  <Zap className="w-4 h-4" />
-                  Get Started
-                </a>
-                <a
-                  href="/how-to-use"
-                  className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg text-sm font-semibold border border-border bg-background text-foreground hover:bg-accent transition-colors"
-                >
-                  <Clock className="w-4 h-4" />
-                  Learn More
-                </a>
-              </div>
+          {/* Featured Features */}
+          <section className="mb-20">
+            <div className="text-center mb-12">
+              <h2 className="text-3xl font-bold text-foreground mb-4">Core Capabilities</h2>
+              <div className="w-20 h-1 bg-primary rounded-full mx-auto"></div>
             </div>
-          </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {featuredFeatures.map((feature, index) => (
+                <Card
+                  key={index}
+                  className="group hover:shadow-lg transition-all duration-300 border border-border/50 hover:border-primary/20"
+                >
+                  <CardHeader className="pb-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="p-3 rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-300">
+                        {feature.icon}
+                      </div>
+                      <Badge variant="secondary" className="text-xs">
+                        {feature.category}
+                      </Badge>
+                    </div>
+                    <CardTitle className="text-xl font-semibold text-foreground group-hover:text-primary transition-colors">
+                      {feature.title}
+                    </CardTitle>
+                    <CardDescription className="text-muted-foreground">{feature.description}</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ul className="space-y-2">
+                      {feature.details.map((detail, detailIndex) => (
+                        <li key={detailIndex} className="flex items-start gap-3 text-sm text-muted-foreground">
+                          <CheckCircle className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+                          <span>{detail}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </section>
+
+          {/* All Features */}
+          <section className="mb-20">
+            <div className="text-center mb-12">
+              <h2 className="text-3xl font-bold text-foreground mb-4">Complete Feature Set</h2>
+              <div className="w-20 h-1 bg-primary rounded-full mx-auto"></div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {regularFeatures.map((feature, index) => (
+                <Card
+                  key={index}
+                  className="group hover:shadow-md transition-all duration-300 border border-border/50 hover:border-primary/20"
+                >
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="p-2.5 rounded-lg bg-muted text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-all duration-300">
+                        {feature.icon}
+                      </div>
+                      <Badge variant="outline" className="text-xs">
+                        {feature.category}
+                      </Badge>
+                    </div>
+                    <CardTitle className="text-lg font-semibold text-foreground">{feature.title}</CardTitle>
+                    <CardDescription className="text-sm text-muted-foreground">{feature.description}</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ul className="space-y-1.5">
+                      {feature.details.map((detail, detailIndex) => (
+                        <li key={detailIndex} className="flex items-start gap-2 text-xs text-muted-foreground">
+                          <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 flex-shrink-0" />
+                          <span>{detail}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </section>
+
+          {/* CTA Section */}
+          <section className="text-center">
+            <Card className="max-w-4xl mx-auto border border-border/50">
+              <CardContent className="p-12">
+                <h2 className="text-3xl font-bold text-foreground mb-4">Ready to Transform Your Metro Operations?</h2>
+                <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
+                  Experience the power of modern transit management with our comprehensive platform designed for the
+                  future of urban mobility.
+                </p>
+
+                <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                  <a
+                    href="/dashboard"
+                    className="inline-flex items-center justify-center gap-2 px-8 py-3 rounded-lg text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                  >
+                    Get Started Now
+                    <ArrowRight className="w-4 h-4" />
+                  </a>
+                  <a
+                    href="/help"
+                    className="inline-flex items-center justify-center gap-2 px-8 py-3 rounded-lg text-sm font-medium border border-border bg-background text-foreground hover:bg-muted transition-colors"
+                  >
+                    Learn More
+                  </a>
+                </div>
+              </CardContent>
+            </Card>
+          </section>
         </div>
       </main>
     </div>
