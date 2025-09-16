@@ -298,16 +298,18 @@ const processRelatedModels = async (row: CSVRow, trainId: string, results: any) 
         rollingStockFitnessStatus: row.rollingStockFitnessStatus === 'true',
         signallingFitnessStatus: row.signallingFitnessStatus === 'true',
         telecomFitnessStatus: row.telecomFitnessStatus === 'true',
-        fitnessExpiryDate: row.fitnessExpiryDate ? new Date(row.fitnessExpiryDate) : new Date(),
-        lastFitnessCheckDate: row.lastFitnessCheckDate ? new Date(row.lastFitnessCheckDate) : new Date()
+        rollingStockFitnessExpiryDate: row.fitnessExpiryDate ? new Date(row.fitnessExpiryDate) : new Date(),
+        signallingFitnessExpiryDate: row.fitnessExpiryDate ? new Date(row.fitnessExpiryDate) : new Date(),
+        telecomFitnessExpiryDate: row.fitnessExpiryDate ? new Date(row.fitnessExpiryDate) : new Date(),
       },
       create: {
         trainId,
         rollingStockFitnessStatus: row.rollingStockFitnessStatus === 'true',
         signallingFitnessStatus: row.signallingFitnessStatus === 'true',
         telecomFitnessStatus: row.telecomFitnessStatus === 'true',
-        fitnessExpiryDate: row.fitnessExpiryDate ? new Date(row.fitnessExpiryDate) : new Date(),
-        lastFitnessCheckDate: row.lastFitnessCheckDate ? new Date(row.lastFitnessCheckDate) : new Date()
+        rollingStockFitnessExpiryDate: row.fitnessExpiryDate ? new Date(row.fitnessExpiryDate) : new Date(),
+        signallingFitnessExpiryDate: row.fitnessExpiryDate ? new Date(row.fitnessExpiryDate) : new Date(),
+        telecomFitnessExpiryDate: row.fitnessExpiryDate ? new Date(row.fitnessExpiryDate) : new Date(),
       }
     });
     results.fitness++;
