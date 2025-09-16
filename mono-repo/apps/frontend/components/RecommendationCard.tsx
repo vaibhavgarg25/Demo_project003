@@ -36,7 +36,7 @@ export function RecommendationCard({ trainset, reason, confidence }: Recommendat
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <h3 className="font-medium text-text">{trainset.id}</h3>
+              <h3 className="font-medium text-text">{trainset.trainID}</h3>
               <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColors[trainset.status]}`}>
                 {trainset.status}
               </span>
