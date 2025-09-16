@@ -39,12 +39,13 @@ const aliasToCanonical: Record<string, string> = {
   trainname: "trainname",
   train: "trainname",
   trainid: "trainID",
-  // Fitness
+  // Fitness (align with Prisma schema)
   rollingstockfitnessstatus: "rollingStockFitnessStatus",
   signallingfitnessstatus: "signallingFitnessStatus",
   telecomfitnessstatus: "telecomFitnessStatus",
-  fitness_expiry_date: "fitnessExpiryDate",
-  last_fitness_check_date: "lastFitnessCheckDate",
+  rollingstockfitnessexpirydate: "rollingStockFitnessExpiryDate",
+  signallingfitnessexpirydate: "signallingFitnessExpiryDate",
+  telecomfitnessexpirydate: "telecomFitnessExpiryDate",
   // Job cards
   jobcardstatus: "jobCardStatus",
   openjobcards: "openJobCards",
@@ -89,8 +90,9 @@ const normalizeRow = (raw: CSVRow): CSVRow => {
       else if ((contains("rolling") && contains("fitness")) || contains("rollingstock")) canonical = "rollingStockFitnessStatus";
       else if (contains("signalling") && contains("fitness")) canonical = "signallingFitnessStatus";
       else if (contains("telecom") && contains("fitness")) canonical = "telecomFitnessStatus";
-      else if (contains("fitness") && contains("expiry")) canonical = "fitnessExpiryDate";
-      else if (contains("last") && contains("fitness") && contains("check")) canonical = "lastFitnessCheckDate";
+      else if (contains("rolling") && contains("fitness") && contains("expiry")) canonical = "rollingStockFitnessExpiryDate";
+      else if (contains("signalling") && contains("fitness") && contains("expiry")) canonical = "signallingFitnessExpiryDate";
+      else if (contains("telecom") && contains("fitness") && contains("expiry")) canonical = "telecomFitnessExpiryDate";
       else if (contains("job") && contains("status")) canonical = "jobCardStatus";
       else if (contains("open") && contains("job")) canonical = "openJobCards";
       else if (contains("closed") && contains("job")) canonical = "closedJobCards";
@@ -133,8 +135,9 @@ const normalizeRow = (raw: CSVRow): CSVRow => {
 
   // Normalize date fields to ISO strings understood by new Date()
   const dateFields = [
-    "fitnessExpiryDate",
-    "lastFitnessCheckDate",
+    "rollingStockFitnessExpiryDate",
+    "signallingFitnessExpiryDate",
+    "telecomFitnessExpiryDate",
     "lastJobCardUpdate",
     "lastCleanedDate",
   ];
@@ -184,12 +187,20 @@ export const processCSV = async (
     });
 
     if (uploadStatusMap[jobId]) {
-      uploadStatusMap[jobId].progress = 25;
+      uploadStatusMap[jobId].progress = 40;
       uploadStatusMap[jobId].message = `Parsed ${results.length} rows from CSV`;
     }
 
     // Normalize headers/values from Excel-style CSVs before inserting
     const normalizedRows = results.map(normalizeRow);
+
+    // Expose ONLY first 25 parsed rows in status for inspection via GET /upload-status/:jobId
+    if (uploadStatusMap[jobId]) {
+      uploadStatusMap[jobId].results = {
+        parsedCount: normalizedRows.length,
+        parsedPreview: normalizedRows.slice(0, 25),
+      };
+    }
 
     // Process and insert data
     const processResults = await insertDataIntoModels(normalizedRows, jobId, uploadStatusMap);
@@ -199,7 +210,10 @@ export const processCSV = async (
         status: 'completed',
         progress: 100,
         message: 'CSV processing completed successfully',
-        results: processResults
+        results: {
+          ...(uploadStatusMap[jobId].results || {}),
+          ...processResults,
+        }
       };
     }
 
@@ -298,18 +312,18 @@ const processRelatedModels = async (row: CSVRow, trainId: string, results: any) 
         rollingStockFitnessStatus: row.rollingStockFitnessStatus === 'true',
         signallingFitnessStatus: row.signallingFitnessStatus === 'true',
         telecomFitnessStatus: row.telecomFitnessStatus === 'true',
-        rollingStockFitnessExpiryDate: row.fitnessExpiryDate ? new Date(row.fitnessExpiryDate) : new Date(),
-        signallingFitnessExpiryDate: row.fitnessExpiryDate ? new Date(row.fitnessExpiryDate) : new Date(),
-        telecomFitnessExpiryDate: row.fitnessExpiryDate ? new Date(row.fitnessExpiryDate) : new Date(),
+        rollingStockFitnessExpiryDate: row.rollingStockFitnessExpiryDate ? new Date(row.rollingStockFitnessExpiryDate) : new Date(),
+        signallingFitnessExpiryDate: row.signallingFitnessExpiryDate ? new Date(row.signallingFitnessExpiryDate) : new Date(),
+        telecomFitnessExpiryDate: row.telecomFitnessExpiryDate ? new Date(row.telecomFitnessExpiryDate) : new Date(),
       },
       create: {
         trainId,
         rollingStockFitnessStatus: row.rollingStockFitnessStatus === 'true',
         signallingFitnessStatus: row.signallingFitnessStatus === 'true',
         telecomFitnessStatus: row.telecomFitnessStatus === 'true',
-        rollingStockFitnessExpiryDate: row.fitnessExpiryDate ? new Date(row.fitnessExpiryDate) : new Date(),
-        signallingFitnessExpiryDate: row.fitnessExpiryDate ? new Date(row.fitnessExpiryDate) : new Date(),
-        telecomFitnessExpiryDate: row.fitnessExpiryDate ? new Date(row.fitnessExpiryDate) : new Date(),
+        rollingStockFitnessExpiryDate: row.rollingStockFitnessExpiryDate ? new Date(row.rollingStockFitnessExpiryDate) : new Date(),
+        signallingFitnessExpiryDate: row.signallingFitnessExpiryDate ? new Date(row.signallingFitnessExpiryDate) : new Date(),
+        telecomFitnessExpiryDate: row.telecomFitnessExpiryDate ? new Date(row.telecomFitnessExpiryDate) : new Date(),
       }
     });
     results.fitness++;

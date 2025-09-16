@@ -78,7 +78,7 @@ class ApiClient {
       headers.set("Authorization", `Bearer ${this.token}`);
     }
 
-    const response = await fetch(`${this.baseUrl}/api/train/upload-csv`, {
+    const response = await fetch(`${this.baseUrl}/api/upload/upload`, {
       method: "POST",
       headers,
       body: formData,
