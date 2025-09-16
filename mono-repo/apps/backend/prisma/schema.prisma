@@ -41,7 +41,7 @@ model Train {
   trainname String    @unique
   trainID   String    @unique
   createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  updatedAt DateTime?  @updatedAt
 
   fitness        FitnessCertificates?
   jobCardStatus  JobCardStatus?
@@ -55,10 +55,11 @@ model Train {
 model FitnessCertificates {
   id                        Int       @id @default(autoincrement())
   rollingStockFitnessStatus  Boolean
+  rollingStockFitnessExpiryDate DateTime
   signallingFitnessStatus    Boolean
+  signallingFitnessExpiryDate DateTime
   telecomFitnessStatus       Boolean
-  fitnessExpiryDate          DateTime
-  lastFitnessCheckDate       DateTime
+  telecomFitnessExpiryDate   DateTime
 
   train     Train   @relation(fields: [trainId], references: [trainID])
   trainId   String     @unique
@@ -124,6 +125,7 @@ model Stabling {
 model Operations {
   id                Int                @id @default(autoincrement())
   operationalStatus OperationalStatusEnum
+  reasonForStatus  String?
 
   train     Train   @relation(fields: [trainId], references: [trainID])
   trainId   String     @unique
