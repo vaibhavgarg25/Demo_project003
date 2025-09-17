@@ -1,5 +1,6 @@
 import io
 import pandas as pd
+import io
 from typing import List
 from fastapi import HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
@@ -119,11 +120,11 @@ class MooHandler:
             try:
                 payload = {
                     "runId": run_id, 
-                    "filePath": file_path,
-                    "success": file_path is not None,
+                    "status": "success" if file_path else "failed",
+                    "outputFilePath": file_path,
                     "error": error_message
                 }
-                resp = await client.post(MooHandler.WEBHOOK_URL, json=payload, timeout=10)
+                resp = await client.post(MooHandler.WEBHOOK_URL, json=payload, timeout=5)
                 resp.raise_for_status()
                 print(f"[MOO] Webhook sent successfully → {payload}")
             except Exception as e:

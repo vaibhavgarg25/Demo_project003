@@ -16,11 +16,15 @@ class StorageManager:
     # Storage configuration
     BASE_STORAGE_PATH = settings.SHARED_STORAGE_PATH
     
-    # Directory structure
+    # Directory structure - organized by service
     PATHS = {
         "INPUT": "input",
-        "OUTPUT": "output", 
-        "TEMP": "temp"
+        "OUTPUT": "output",
+        "SIMULATION_OUTPUT": "output/simulation",
+        "MOO_OUTPUT": "output/moo", 
+        "RL_OUTPUT": "output/rl",
+        "TEMP": "temp",
+        "LOGS": "logs"
     }
     
     # File naming patterns
@@ -38,7 +42,11 @@ class StorageManager:
             directories = [
                 cls.get_storage_path("INPUT"),
                 cls.get_storage_path("OUTPUT"),
-                cls.get_storage_path("TEMP")
+                cls.get_storage_path("SIMULATION_OUTPUT"),
+                cls.get_storage_path("MOO_OUTPUT"),
+                cls.get_storage_path("RL_OUTPUT"),
+                cls.get_storage_path("TEMP"),
+                cls.get_storage_path("LOGS")
             ]
             
             for directory in directories:
@@ -95,21 +103,45 @@ class StorageManager:
     
     @classmethod
     async def save_simulation_result(cls, run_id: str, df: pd.DataFrame) -> str:
-        """Save simulation results to storage"""
+        """Save simulation results to organized simulation output folder"""
         filename = cls.FILE_PATTERNS["SIMULATION_RESULT"](run_id)
-        return await cls.save_csv_to_storage(df, "OUTPUT", filename)
+        return await cls.save_csv_to_storage(df, "SIMULATION_OUTPUT", filename)
     
     @classmethod
     async def save_moo_result(cls, run_id: str, df: pd.DataFrame) -> str:
-        """Save MOO ranking results to storage"""
+        """Save MOO ranking results to organized MOO output folder"""
         filename = cls.FILE_PATTERNS["MOO_RESULT"](run_id)
-        return await cls.save_csv_to_storage(df, "OUTPUT", filename)
+        return await cls.save_csv_to_storage(df, "MOO_OUTPUT", filename)
     
     @classmethod
     async def save_rl_result(cls, run_id: str, df: pd.DataFrame) -> str:
-        """Save RL scheduling results to storage"""
+        """Save RL scheduling results to organized RL output folder"""
         filename = cls.FILE_PATTERNS["RL_FINAL"](run_id)
-        return await cls.save_csv_to_storage(df, "OUTPUT", filename)
+        return await cls.save_csv_to_storage(df, "RL_OUTPUT", filename)
+    
+    @classmethod
+    async def save_pipeline_log(cls, run_id: str, stage: str, log_data: dict) -> str:
+        """Save pipeline stage logs for UI monitoring"""
+        import json
+        from datetime import datetime
+        
+        log_filename = f"pipeline_{run_id}_{stage}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        log_path = cls.get_file_path("LOGS", log_filename)
+        
+        # Ensure directory exists
+        Path(log_path).parent.mkdir(parents=True, exist_ok=True)
+        
+        # Add timestamp to log data
+        log_data["timestamp"] = datetime.now().isoformat()
+        log_data["run_id"] = run_id
+        log_data["stage"] = stage
+        
+        # Save JSON log
+        with open(log_path, 'w') as f:
+            json.dump(log_data, f, indent=2)
+            
+        print(f"[Storage] Pipeline log saved: {log_path}")
+        return log_path
     
     @classmethod
     async def file_exists(cls, file_path: str) -> bool:

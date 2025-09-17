@@ -59,6 +59,23 @@ class RLResponse(BaseModel):
             }
         }
 
-class RLConfig:
+class RLConfig(BaseModel):
     """Configuration for RL endpoint"""
     SEED: int = 42
+    SERVICE_QUOTA: int = 13
+    EPISODE_DAYS: int = 7
+    DAILY_MILEAGE_IF_IN_SERVICE: float = 400.0
+    DAILY_EXPOSURE_HOURS: float = 16.0
+    JOBCARD_REDUCTION_IF_MAINTENANCE: int = 2
+    JOBCARD_NEW_PER_DAY_LAMBDA: float = 0.1
+    
+    def dict(self):
+        return {
+            "seed": self.SEED,
+            "service_quota": self.SERVICE_QUOTA,
+            "episode_days": self.EPISODE_DAYS,
+            "daily_mileage_if_in_service": self.DAILY_MILEAGE_IF_IN_SERVICE,
+            "daily_exposure_hours": self.DAILY_EXPOSURE_HOURS,
+            "jobcard_reduction_if_maintenance": self.JOBCARD_REDUCTION_IF_MAINTENANCE,
+            "jobcard_new_per_day_lambda": self.JOBCARD_NEW_PER_DAY_LAMBDA
+        }

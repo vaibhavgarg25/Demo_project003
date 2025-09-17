@@ -12,7 +12,7 @@ router = APIRouter(prefix="/moo", tags=["Multi-Objective Optimization"])
 
 # Pydantic models for file path requests
 class MooFilePathRequest(BaseModel):
-    simulation_result_file_path: str
+    file_path: str
     runId: str
     mileage_limit_before_service: int = 10000
 
@@ -23,8 +23,8 @@ class ResponseFormat(str, Enum):
     simple = "simple"      # Simple JSON with only ID, Score, Rank
 
 @router.post(
-    "/rank-from-file",
-    summary="Rank Train Fleet from File Path (Pipeline Mode)",
+    "/start-from-file",
+    summary="Start MOO Ranking from File Path (Pipeline Mode)",
     description="""
     🚀 **Pipeline MOO Ranking from File Path**
     
@@ -33,7 +33,7 @@ class ResponseFormat(str, Enum):
     is already saved to shared storage.
     
     **Input:**
-    - simulation_result_file_path: Path to simulation result CSV file in shared storage
+    - file_path: Path to simulation result CSV file in shared storage
     - runId: Pipeline run identifier for tracking
     - mileage_limit_before_service: Mileage limit threshold (default: 10000 km)
     
@@ -47,7 +47,7 @@ class ResponseFormat(str, Enum):
     job cards, branding, mileage, wear & tear, cleaning, and operational status.
     """
 )
-async def rank_train_fleet_from_file(
+async def start_moo_ranking_from_file(
     request: MooFilePathRequest
 ) -> dict:
     """
@@ -56,11 +56,29 @@ async def rank_train_fleet_from_file(
     """
     config = MooConfig(mileage_limit_before_service=request.mileage_limit_before_service)
     result = await MooHandler.rank_from_file_path(
-        request.simulation_result_file_path,
+        request.file_path,
         config,
         request.runId
     )
     return result
+
+@router.post(
+    "/rank-from-file",
+    summary="Rank Train Fleet from File Path (Legacy Pipeline Mode)",
+    description="""
+    🚀 **Pipeline MOO Ranking from File Path (Legacy)**
+    
+    Legacy endpoint - use /start-from-file instead for new implementations.
+    """
+)
+async def rank_train_fleet_from_file(
+    request: MooFilePathRequest
+) -> dict:
+    """
+    Legacy endpoint - redirects to start_moo_ranking_from_file
+    """
+    # For backward compatibility, redirect to the new endpoint logic
+    return await start_moo_ranking_from_file(request)
 
 @router.post(
     "/rank",

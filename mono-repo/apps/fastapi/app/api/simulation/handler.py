@@ -11,7 +11,7 @@ from app.core.storage import StorageManager
 from app.core.config import settings
 
 class SimulationHandler:
-    WEBHOOK_URL = settings.WEBHOOK_SIMULATION_URL
+    WEBHOOK_URL = settings.WEBHOOK_SIMULATION_URL  # Force reload config
 
     @staticmethod
     async def simulate_from_file_path(
@@ -65,19 +65,29 @@ class SimulationHandler:
     @staticmethod
     async def _send_webhook(runId: str, filePath: Optional[str], error_message: Optional[str] = None):
         """Send async webhook call to backend after simulation completes"""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             try:
                 payload = {
                     "runId": runId, 
-                    "filePath": filePath,
-                    "success": filePath is not None,
+                    "status": "success" if filePath else "failed",
+                    "outputFilePath": filePath,
                     "error": error_message
                 }
-                response = await client.post(SimulationHandler.WEBHOOK_URL, json=payload, timeout=10)
+                print(f"[Simulation] Attempting to send webhook to {SimulationHandler.WEBHOOK_URL}")
+                print(f"[Simulation] Webhook payload: {payload}")
+                
+                response = await client.post(SimulationHandler.WEBHOOK_URL, json=payload, timeout=30.0)
                 response.raise_for_status()
                 print(f"[Simulation] Webhook sent successfully → {payload}")
+                print(f"[Simulation] Response status: {response.status_code}")
+                print(f"[Simulation] Response text: {response.text}")
+            except httpx.TimeoutException as e:
+                print(f"[Simulation] Webhook timeout error: {str(e)}")
+            except httpx.ConnectError as e:
+                print(f"[Simulation] Webhook connection error: {str(e)}")
             except Exception as e:
                 print(f"[Simulation] Failed to send webhook: {str(e)}")
+                print(f"[Simulation] Error type: {type(e).__name__}")
 
     @staticmethod
     async def simulate_train_fleet(

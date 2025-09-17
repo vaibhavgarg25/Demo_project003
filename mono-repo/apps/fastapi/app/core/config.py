@@ -29,10 +29,10 @@ class Settings(BaseSettings):
     SHARED_STORAGE_PATH: str = "/shared/storage"
     
     # Backend Communication URLs
-    BACKEND_BASE_URL: str = "http://backend:8000"
-    WEBHOOK_SIMULATION_URL: str = "http://backend:8000/api/webhook/simulation-finished"
-    WEBHOOK_MOO_URL: str = "http://backend:8000/api/webhook/moo-finished"
-    WEBHOOK_RL_URL: str = "http://backend:8000/api/webhook/rl-finished"
+    BACKEND_BASE_URL: str = "http://localhost:8000"
+    WEBHOOK_SIMULATION_URL: str = "http://localhost:8000/api/webhook/simulation-complete"
+    WEBHOOK_MOO_URL: str = "http://localhost:8000/api/webhook/moo-complete"
+    WEBHOOK_RL_URL: str = "http://localhost:8000/api/webhook/rl-complete"
     
     @property
     def ALLOWED_HOSTS(self) -> List[str]:

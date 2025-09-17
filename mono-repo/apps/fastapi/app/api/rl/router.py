@@ -12,7 +12,7 @@ router = APIRouter(prefix="/rl", tags=["Reinforcement Learning"])
 
 # Pydantic models for file path requests
 class RLFilePathRequest(BaseModel):
-    moo_result_file_path: str
+    file_path: str
     runId: str
     service_quota: Optional[int] = 13
     episode_days: Optional[int] = 7
@@ -29,8 +29,8 @@ class ResponseFormat(str, Enum):
     simple = "simple"      # Lightweight JSON with ID, Score, Rank only
 
 @router.post(
-    "/schedule-from-file",
-    summary="Schedule Train Fleet from File Path (Pipeline Mode)",
+    "/start-from-file",
+    summary="Start RL Scheduling from File Path (Pipeline Mode)",
     description="""
     🚀 **Pipeline RL Scheduling from File Path**
     
@@ -39,9 +39,8 @@ class ResponseFormat(str, Enum):
     is already saved to shared storage.
     
     **Input:**
-    - moo_result_file_path: Path to MOO result CSV file in shared storage
+    - file_path: Path to MOO result CSV file in shared storage
     - runId: Pipeline run identifier for tracking
-    - scheduling parameters: All optional RL configuration parameters
     
     **Output:**
     - Success/failure status
@@ -49,11 +48,11 @@ class ResponseFormat(str, Enum):
     - Webhook notification sent to backend upon completion
     
     **RL Algorithm:**
-    Uses PPO (Proximal Policy Optimization) to assign optimal operational status
+    Uses RL.py inference mode to assign optimal operational status
     to each train based on fitness, jobcards, mileage, branding, cleaning, and stabling.
     """
 )
-async def schedule_train_fleet_from_file(
+async def start_rl_from_file_path(
     request: RLFilePathRequest
 ) -> dict:
     """
@@ -72,7 +71,7 @@ async def schedule_train_fleet_from_file(
     )
     
     result = await RLHandler.schedule_from_file_path(
-        request.moo_result_file_path,
+        request.file_path,
         config,
         request.runId
     )

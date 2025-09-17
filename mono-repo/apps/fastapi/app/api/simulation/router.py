@@ -59,6 +59,37 @@ async def start_simulation_from_file(
     return result
 
 @router.post(
+    "/test-webhook",
+    summary="Test Webhook Configuration",
+    description="Test webhook URL and connection to backend"
+)
+async def test_webhook():
+    """Test webhook configuration and connection"""
+    from app.api.simulation.handler import SimulationHandler
+    from app.core.config import settings
+    
+    try:
+        # Test webhook URL configuration
+        webhook_url = SimulationHandler.WEBHOOK_URL
+        
+        # Test sending a webhook
+        await SimulationHandler._send_webhook("test_run_123", "test/path.csv", None)
+        
+        return {
+            "success": True,
+            "webhook_url": webhook_url,
+            "backend_url": settings.BACKEND_BASE_URL,
+            "message": "Webhook test completed - check logs for details"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "webhook_url": getattr(SimulationHandler, 'WEBHOOK_URL', 'Not set'),
+            "backend_url": settings.BACKEND_BASE_URL
+        }
+
+@router.post(
     "/",
     response_class=StreamingResponse,
     summary="Simulate Train Fleet Operations",
