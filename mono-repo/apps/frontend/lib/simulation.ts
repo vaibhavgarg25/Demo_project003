@@ -38,7 +38,7 @@ export function simulate(trainsets: Trainset[], params: SimulationParams): Simul
   const baselineAvailability = (activeTrainsets / totalTrainsets) * 100
   const baselinePerformance = Math.max(60, 95 - maintenanceTrainsets * 2 - outOfServiceTrainsets * 5)
   const baselineBacklog = trainsets.reduce((sum, t) => sum + t.job_cards.filter((j) => j.status === "open").length, 0)
-  const baselineAvgMileage = trainsets.reduce((sum, t) => sum + t.mileage, 0) / totalTrainsets
+  const baselineAvgMileage = trainsets.reduce((sum, t) => sum + t.mileage.totalMileageKM, 0) / totalTrainsets
 
   // Simulate changes
   let newActiveCount = activeTrainsets + params.availableTrainsDelta

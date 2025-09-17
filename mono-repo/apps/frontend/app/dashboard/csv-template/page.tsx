@@ -71,6 +71,7 @@ export default function CSVTemplatePage() {
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadSuccess, setUploadSuccess] = useState(false)
+  const [showConfirmation, setShowConfirmation] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const downloadTemplate = () => {
@@ -189,9 +190,15 @@ export default function CSVTemplatePage() {
     reader.readAsText(file)
   }
 
-  const handleUpload = async () => {
+  const handleUploadClick = () => {
+    if (!uploadedFile || !validationResult?.isValid) return
+    setShowConfirmation(true)
+  }
+
+  const handleConfirmUpload = async () => {
     if (!uploadedFile || !validationResult?.isValid) return
 
+    setShowConfirmation(false)
     setIsUploading(true)
     try {
       const formData = new FormData()
@@ -238,6 +245,10 @@ export default function CSVTemplatePage() {
     } finally {
       setIsUploading(false)
     }
+  }
+
+  const handleCancelUpload = () => {
+    setShowConfirmation(false)
   }
 
   return (
@@ -322,7 +333,7 @@ export default function CSVTemplatePage() {
             </div>
 
             <Button
-              onClick={handleUpload}
+              onClick={handleUploadClick}
               disabled={!validationResult?.isValid || isUploading || uploadSuccess}
               className="w-full bg-primary text-primary-foreground"
               size="lg"
@@ -421,6 +432,39 @@ export default function CSVTemplatePage() {
             </Alert>
           </CardContent>
         </Card>
+      )}
+
+      {/* Confirmation Dialog */}
+      {showConfirmation && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-black text-white rounded-lg p-8 max-w-md mx-4 border border-gray-600">
+            <div className="text-center space-y-4">
+              <div className="w-16 h-16 bg-gray-800  rounded-full flex items-center justify-center mx-auto">
+                <FileSpreadsheet className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-semibold ">Confirm Upload</h3>
+              <p className="">
+                Are you sure you want to upload <span className="font-medium text-white">{uploadedFile?.name}</span>? 
+                This will process and store the trainset data in the system.
+              </p>
+              <div className="flex gap-4 pt-4">
+                <Button
+                  onClick={handleCancelUpload}
+                  variant="outline"
+                  className="flex-1 bg-transparent border-gray-600 text-white hover:bg-gray-800"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleConfirmUpload}
+                  className="flex-1  hover:bg-gray-200"
+                >
+                  OK
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
