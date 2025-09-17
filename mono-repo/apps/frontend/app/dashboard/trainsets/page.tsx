@@ -5,7 +5,7 @@ import { CompactTable } from "@/components/CompactTable"
 import { TrainsetModal } from "@/components/TrainsetModal"
 import { fetchTrainsets, type Trainset } from "@/lib/mock-data"
 import { Button } from "@/components/ui/button"
-import { Grid, List, Search, Settings } from "lucide-react"
+import { Grid, List, Search, Settings, Check } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
@@ -275,7 +275,7 @@ export default function TrainsetsPage() {
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value as any)}
-                  className="h-9 px-3 rounded-md  bg-background text-sm"
+                  className="h-9 px-3 rounded-md  bg-background text-sm border border-input"
                 >
                   <option value="All">All Status</option>
                   <option value="Active">Active</option>
@@ -289,7 +289,7 @@ export default function TrainsetsPage() {
                 <select
                   value={fitnessFilter}
                   onChange={(e) => setFitnessFilter(e.target.value as any)}
-                  className="h-9 px-3 rounded-md  bg-background text-sm"
+                  className="h-9 px-3 rounded-md  bg-background text-sm border border-input"
                 >
                   <option value="All">All Fitness</option>
                   <option value="High">High</option>
@@ -298,57 +298,132 @@ export default function TrainsetsPage() {
                 </select>
               </div>
 
-              {/* Settings dropdown (always visible now) */}
+              {/* Enhanced Settings dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button size="sm" className="flex items-center gap-2">
+                  <Button size="sm" className="flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md">
                     <Settings className="w-4 h-4" />
                     Settings
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
                   align="end"
-                  className="w-56 bg-white dark:bg-neutral-900  shadow-md rounded-md">
-                  <DropdownMenuLabel>Visible Columns</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuCheckboxItem
-                    checked={visibleColumns.id}
-                    onCheckedChange={(checked) => setVisibleColumns((prev) => ({ ...prev, id: checked }))}
-                  >
-                    ID
-                  </DropdownMenuCheckboxItem>
-                  <DropdownMenuCheckboxItem
-                    checked={visibleColumns.status}
-                    onCheckedChange={(checked) => setVisibleColumns((prev) => ({ ...prev, status: checked }))}
-                  >
-                    Status
-                  </DropdownMenuCheckboxItem>
-                  <DropdownMenuCheckboxItem
-                    checked={visibleColumns.fitnessDays}
-                    onCheckedChange={(checked) =>
-                      setVisibleColumns((prev) => ({ ...prev, fitnessDays: checked }))
-                    }
-                  >
-                    Fitness Days
-                  </DropdownMenuCheckboxItem>
-                  <DropdownMenuCheckboxItem
-                    checked={visibleColumns.openJobs}
-                    onCheckedChange={(checked) => setVisibleColumns((prev) => ({ ...prev, openJobs: checked }))}
-                  >
-                    Open Jobs
-                  </DropdownMenuCheckboxItem>
-                  <DropdownMenuCheckboxItem
-                    checked={visibleColumns.mileage}
-                    onCheckedChange={(checked) => setVisibleColumns((prev) => ({ ...prev, mileage: checked }))}
-                  >
-                    Mileage
-                  </DropdownMenuCheckboxItem>
-                  <DropdownMenuCheckboxItem
-                    checked={visibleColumns.position}
-                    onCheckedChange={(checked) => setVisibleColumns((prev) => ({ ...prev, position: checked }))}
-                  >
-                    Position
-                  </DropdownMenuCheckboxItem>
+                  className="w-64 p-2 bg-background border border-border shadow-xl rounded-xl backdrop-blur-sm"
+                  sideOffset={8}
+                >
+                  <div className="px-3 py-2 mb-2">
+                    <DropdownMenuLabel className="text-base font-semibold text-foreground flex items-center gap-2">
+                      <Settings className="w-4 h-4" />
+                      Column Visibility
+                    </DropdownMenuLabel>
+                    <p className="text-xs text-muted-foreground mt-1">Configure which columns to display in list view</p>
+                  </div>
+                  <DropdownMenuSeparator className="my-2" />
+                  
+                  <div className="space-y-1">
+                    <div 
+                      className={`flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition-all hover:bg-muted/60 ${
+                        visibleColumns.id ? 'bg-primary/10 text-primary' : 'text-foreground'
+                      }`}
+                      onClick={() => setVisibleColumns((prev) => ({ ...prev, id: !prev.id }))}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
+                          visibleColumns.id ? 'bg-primary border-primary' : 'border-muted-foreground'
+                        }`}>
+                          {visibleColumns.id && <Check className="w-3 h-3 text-primary-foreground" />}
+                        </div>
+                        <span className="text-sm font-medium">Train ID</span>
+                      </div>
+                    </div>
+
+                    <div 
+                      className={`flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition-all hover:bg-muted/60 ${
+                        visibleColumns.status ? 'bg-primary/10 text-primary' : 'text-foreground'
+                      }`}
+                      onClick={() => setVisibleColumns((prev) => ({ ...prev, status: !prev.status }))}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
+                          visibleColumns.status ? 'bg-primary border-primary' : 'border-muted-foreground'
+                        }`}>
+                          {visibleColumns.status && <Check className="w-3 h-3 text-primary-foreground" />}
+                        </div>
+                        <span className="text-sm font-medium">Status</span>
+                      </div>
+                    </div>
+
+                    <div 
+                      className={`flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition-all hover:bg-muted/60 ${
+                        visibleColumns.fitnessDays ? 'bg-primary/10 text-primary' : 'text-foreground'
+                      }`}
+                      onClick={() => setVisibleColumns((prev) => ({ ...prev, fitnessDays: !prev.fitnessDays }))}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
+                          visibleColumns.fitnessDays ? 'bg-primary border-primary' : 'border-muted-foreground'
+                        }`}>
+                          {visibleColumns.fitnessDays && <Check className="w-3 h-3 text-primary-foreground" />}
+                        </div>
+                        <span className="text-sm font-medium">Fitness Days</span>
+                      </div>
+                    </div>
+
+                    <div 
+                      className={`flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition-all hover:bg-muted/60 ${
+                        visibleColumns.openJobs ? 'bg-primary/10 text-primary' : 'text-foreground'
+                      }`}
+                      onClick={() => setVisibleColumns((prev) => ({ ...prev, openJobs: !prev.openJobs }))}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
+                          visibleColumns.openJobs ? 'bg-primary border-primary' : 'border-muted-foreground'
+                        }`}>
+                          {visibleColumns.openJobs && <Check className="w-3 h-3 text-primary-foreground" />}
+                        </div>
+                        <span className="text-sm font-medium">Open Jobs</span>
+                      </div>
+                    </div>
+
+                    <div 
+                      className={`flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition-all hover:bg-muted/60 ${
+                        visibleColumns.mileage ? 'bg-primary/10 text-primary' : 'text-foreground'
+                      }`}
+                      onClick={() => setVisibleColumns((prev) => ({ ...prev, mileage: !prev.mileage }))}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
+                          visibleColumns.mileage ? 'bg-primary border-primary' : 'border-muted-foreground'
+                        }`}>
+                          {visibleColumns.mileage && <Check className="w-3 h-3 text-primary-foreground" />}
+                        </div>
+                        <span className="text-sm font-medium">Mileage</span>
+                      </div>
+                    </div>
+
+                    <div 
+                      className={`flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition-all hover:bg-muted/60 ${
+                        visibleColumns.position ? 'bg-primary/10 text-primary' : 'text-foreground'
+                      }`}
+                      onClick={() => setVisibleColumns((prev) => ({ ...prev, position: !prev.position }))}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
+                          visibleColumns.position ? 'bg-primary border-primary' : 'border-muted-foreground'
+                        }`}>
+                          {visibleColumns.position && <Check className="w-3 h-3 text-primary-foreground" />}
+                        </div>
+                        <span className="text-sm font-medium">Position</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <DropdownMenuSeparator className="my-2" />
+                  <div className="px-3 py-2">
+                    <p className="text-xs text-muted-foreground">
+                      {Object.values(visibleColumns).filter(Boolean).length} of {Object.keys(visibleColumns).length} columns visible
+                    </p>
+                  </div>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
@@ -495,10 +570,7 @@ export default function TrainsetsPage() {
                   </div>
                 </div>
         
-                {/* Footer */}
-                <div className="px-6 py-4 bg-gradient-to-r from-muted/20 to-muted/10 text-center group-hover:from-muted/40 group-hover:to-muted/20 transition-colors">
-                  <div className="text-xs text-muted-foreground font-medium">Click to view details →</div>
-                </div>
+               
               </div>
             )
           })}

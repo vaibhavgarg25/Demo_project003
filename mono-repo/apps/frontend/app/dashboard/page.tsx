@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react"
 import { KpiTile } from "@/components/KpiTile"
 import { RecommendationCard } from "@/components/RecommendationCard"
-import { AnimatedTrain } from "@/components/AnimatedTrain"
+import { SmoothBWTrain } from "@/components/AnimatedTrain"
 import { fetchTrainsets, type Trainset } from "@/lib/mock-data"
 import { daysUntil } from "@/lib/utils"
 
@@ -229,7 +229,7 @@ export default function Dashboard() {
           <h3 className="text-lg font-semibold text-text mb-4 text-balance text-center">Fleet Status</h3>
 
           <Suspense fallback={<div className="w-48 h-20 bg-border rounded-lg animate-pulse" />}>
-            <AnimatedTrain />
+            <SmoothBWTrain />
           </Suspense>
 
           <div className="mt-6 text-center">
