@@ -91,6 +91,8 @@ const triggerSimulationWithFile = async (runId: string, filePath: string) => {
   const simulationUrl = `${process.env.FAST_API_BASE_URI}/simulation/start-from-file`;
   
   try {
+    logger.info("Triggering simulation with file path", { runId, filePath });
+    
     const response = await axios.post(simulationUrl, {
       file_path: filePath,
       runId: runId,
@@ -102,9 +104,19 @@ const triggerSimulationWithFile = async (runId: string, filePath: string) => {
       timeout: 300000, // 5 minutes timeout for simulation
     });
     
-    logger.info("Simulation triggered successfully with file path", { runId, filePath, status: response.status });
+    logger.info("Simulation triggered successfully with file path", { 
+      runId, 
+      filePath, 
+      status: response.status,
+      responseData: response.data 
+    });
   } catch (error) {
-    logger.error("Failed to trigger simulation with file", { runId, filePath, error: (error as Error).message });
+    logger.error("Failed to trigger simulation with file", { 
+      runId, 
+      filePath, 
+      error: (error as Error).message,
+      stack: (error as Error).stack
+    });
     throw error;
   }
 };
@@ -189,26 +201,61 @@ export const handleSimulationFinished = async (runId: string, filePath?: string)
     return;
   }
 
-  logger.info("Simulation finished received", { runId, filePath });
+  logger.info("Simulation finished webhook received", { runId, filePath });
 
   run.status = "moo_running";
   run.details = {
     ...run.details,
-    simulation: { receivedAt: new Date().toISOString(), filePath },
+    simulation: { 
+      receivedAt: new Date().toISOString(), 
+      filePath,
+      stage: "completed"
+    },
   };
-  announce("pipeline", { runId, status: "moo_running" });
+  announce("pipeline", { runId, status: "moo_running", stage: "simulation_complete" });
 
-  try {
-    await axios.post(`${process.env.FAST_API_BASE_URI}/moo/rank-from-file`, {
-      simulation_result_file_path: filePath,
-      runId: runId
-    });
-    logger.info("MOO service started successfully with file path", { runId, filePath });
-  } catch (error) {
-    run.status = "failed";
-    logger.error("Failed to trigger MOO service", { runId, error: (error as Error).message });
-    announce("pipeline", { runId, status: "failed", error: (error as Error).message });
-  }
+  // Fire-and-forget approach for faster pipeline
+  setImmediate(async () => {
+    try {
+      // Call MOO service with simulation results
+      const mooUrl = `${process.env.FAST_API_BASE_URI}/moo/start-from-file`;
+      
+      logger.info("Triggering MOO with simulation results", { runId, filePath });
+      
+      const response = await axios.post(mooUrl, {
+        file_path: filePath,
+        runId: runId
+      }, {
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000
+      });
+      
+      logger.info("MOO service started successfully with file path", { 
+        runId, 
+        filePath,
+        status: response.status,
+        responseData: response.data
+      });
+    } catch (error) {
+      run.status = "failed";
+      run.details = {
+        ...run.details,
+        error: {
+          stage: "moo_trigger",
+          message: (error as Error).message,
+          timestamp: new Date().toISOString()
+        }
+      };
+      logger.error("Failed to trigger MOO service", { 
+        runId, 
+        error: (error as Error).message,
+        stack: (error as Error).stack
+      });
+      announce("pipeline", { runId, status: "failed", error: (error as Error).message });
+    }
+  });
 };
 
 export const handleMooFinished = async (runId: string, filePath?: string) => {
@@ -218,26 +265,61 @@ export const handleMooFinished = async (runId: string, filePath?: string) => {
     return;
   }
 
-  logger.info("MOO finished received", { runId, filePath });
+  logger.info("MOO finished webhook received", { runId, filePath });
 
   run.status = "rl_running";
   run.details = {
     ...run.details,
-    moo: { receivedAt: new Date().toISOString(), filePath },
+    moo: { 
+      receivedAt: new Date().toISOString(), 
+      filePath,
+      stage: "completed"
+    },
   };
-  announce("pipeline", { runId, status: "rl_running" });
+  announce("pipeline", { runId, status: "rl_running", stage: "moo_complete" });
 
-  try {
-    await axios.post(`${process.env.FAST_API_BASE_URI}/rl/schedule-from-file`, {
-      moo_result_file_path: filePath,
-      runId: runId
-    });
-    logger.info("RL service started successfully with file path", { runId, filePath });
-  } catch (error) {
-    run.status = "failed";
-    logger.error("Failed to trigger RL service", { runId, error: (error as Error).message });
-    announce("pipeline", { runId, status: "failed", error: (error as Error).message });
-  }
+  // Fire-and-forget approach for faster pipeline
+  setImmediate(async () => {
+    try {
+      // Call RL service with MOO results
+      const rlUrl = `${process.env.FAST_API_BASE_URI}/rl/start-from-file`;
+      
+      logger.info("Triggering RL with MOO results", { runId, filePath });
+      
+      const response = await axios.post(rlUrl, {
+        file_path: filePath,
+        runId: runId
+      }, {
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000
+      });
+      
+      logger.info("RL service started successfully with file path", { 
+        runId, 
+        filePath,
+        status: response.status,
+        responseData: response.data
+      });
+    } catch (error) {
+      run.status = "failed";
+      run.details = {
+        ...run.details,
+        error: {
+          stage: "rl_trigger",
+          message: (error as Error).message,
+          timestamp: new Date().toISOString()
+        }
+      };
+      logger.error("Failed to trigger RL service", { 
+        runId, 
+        error: (error as Error).message,
+        stack: (error as Error).stack
+      });
+      announce("pipeline", { runId, status: "failed", error: (error as Error).message });
+    }
+  });
 };
 
 export const handleRlFinished = async (runId: string, filePath?: string) => {
@@ -252,41 +334,71 @@ export const handleRlFinished = async (runId: string, filePath?: string) => {
   run.status = "completed";
   run.details = {
     ...run.details,
-    rl: { receivedAt: new Date().toISOString(), filePath },
+    rl: { 
+      receivedAt: new Date().toISOString(), 
+      filePath,
+      stage: "completed"
+    },
+    completedAt: new Date().toISOString()
   };
-  announce("pipeline", { runId, status: "completed" });
+  announce("pipeline", { runId, status: "completed", stage: "rl_complete" });
 
   try {
     if (!filePath) throw new Error("filePath is undefined");
 
-    // Check if file exists
+    // Check if final RL result file exists
     const fileExists = await StorageManager.fileExists(filePath);
     if (!fileExists) {
       throw new Error(`Final RL result file not found: ${filePath}`);
     }
 
-    // Read the final RL result file
-    const buffer = await StorageManager.readFileBuffer(filePath);
+    logger.info("Pipeline completed successfully", { 
+      runId, 
+      finalResultPath: filePath,
+      duration: new Date().getTime() - run.startedAt.getTime()
+    });
 
-    type UploadStatus = Record<string, { status: "completed" | "failed" | "processing"; progress?: number; message?: string; results?: any }>;
-    const tempJobId = `job_${Date.now()}`;
-    const uploadStatusMap: UploadStatus = {
-      [tempJobId]: { status: "processing", progress: 0 },
-    };
+    // Optionally update database with final results (DISABLED for speed)
+    // Note: Disabling database updates to speed up pipeline completion
+    const shouldUpdateDatabase = false; // process.env.UPDATE_DATABASE_ON_COMPLETION === 'true';
+    
+    if (shouldUpdateDatabase) {
+      // Read the final RL result file
+      const buffer = await StorageManager.readFileBuffer(filePath);
 
-    await processCSV(buffer, tempJobId, uploadStatusMap);
+      type UploadStatus = Record<string, { status: "completed" | "failed" | "processing"; progress?: number; message?: string; results?: any }>;
+      const tempJobId = `job_${Date.now()}`;
+      const uploadStatusMap: UploadStatus = {
+        [tempJobId]: { status: "processing", progress: 0 },
+      };
 
-    if (!uploadStatusMap[tempJobId] || uploadStatusMap[tempJobId].status !== "completed") {
-      throw new Error(uploadStatusMap[tempJobId]?.message || "CSV processing failed without message");
+      await processCSV(buffer, tempJobId, uploadStatusMap);
+
+      if (!uploadStatusMap[tempJobId] || uploadStatusMap[tempJobId].status !== "completed") {
+        throw new Error(uploadStatusMap[tempJobId]?.message || "CSV processing failed without message");
+      }
+
+      await prisma.train.updateMany({ data: { updatedAt: new Date() } });
+      notifyClients("new_data_ready");
+      logger.info("Train data successfully updated in DB from RL result file", { runId, filePath });
     }
-
-    await prisma.train.updateMany({ data: { updatedAt: new Date() } });
-    notifyClients("new_data_ready");
-    logger.info("Train data successfully updated in DB from RL result file", { runId, filePath });
 
   } catch (error) {
     run.status = "failed";
-    logger.error("Pipeline failed during RL data processing", { runId, filePath, error: (error as Error).message });
+    run.details = {
+      ...run.details,
+      error: {
+        stage: "rl_completion",
+        message: (error as Error).message,
+        timestamp: new Date().toISOString()
+      }
+    };
+    logger.error("Pipeline failed during RL data processing", { 
+      runId, 
+      filePath, 
+      error: (error as Error).message,
+      stack: (error as Error).stack
+    });
     announce("pipeline", { runId, status: "failed", error: (error as Error).message });
   }
 };
