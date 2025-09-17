@@ -22,21 +22,28 @@ const CircularProgress = ({
   value,
   size = 60,
   strokeWidth = 6,
-  color = "text-chart-3",
 }: {
   value: number
   size?: number
   strokeWidth?: number
-  color?: string
 }) => {
   const radius = (size - strokeWidth) / 2
   const circumference = radius * 2 * Math.PI
   const strokeDasharray = circumference
   const strokeDashoffset = circumference - (value / 100) * circumference
 
+  // choose color based on thresholds
+  let colorClass = "text-emerald-500" // default green
+  if (value <= 33) {
+    colorClass = "text-red-500"
+  } else if (value <= 66) {
+    colorClass = "text-orange-500"
+  }
+
   return (
     <div className="relative inline-flex items-center justify-center">
       <svg width={size} height={size} className="transform -rotate-90">
+        {/* Background track */}
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -46,6 +53,7 @@ const CircularProgress = ({
           fill="none"
           className="text-muted opacity-20"
         />
+        {/* Progress circle */}
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -55,7 +63,7 @@ const CircularProgress = ({
           fill="none"
           strokeDasharray={strokeDasharray}
           strokeDashoffset={strokeDashoffset}
-          className={`${color} transition-all duration-300 ease-in-out`}
+          className={`${colorClass} transition-all duration-300 ease-in-out`}
           strokeLinecap="round"
         />
       </svg>
@@ -191,36 +199,37 @@ export default function TrainsetsPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          <div className="bg-card rounded-lg border p-4 text-center hover:shadow-md transition-shadow">
+          <div className="bg-muted/40 rounded-xl p-4 text-center hover:shadow-md hover:bg-muted/60 transition-all">
             <div className="text-2xl font-bold text-foreground">{trainsets.length}</div>
             <div className="text-sm text-muted-foreground">Total Trainsets</div>
-            <div className="mt-2 h-1 bg-chart-2 rounded-full"></div>
+            <div className="mt-3 h-1 bg-chart-2 rounded-full"></div>
           </div>
-          <div className="bg-card rounded-lg border p-4 text-center hover:shadow-md transition-shadow">
+          <div className="bg-muted/40 rounded-xl p-4 text-center hover:shadow-md hover:bg-muted/60 transition-all">
             <div className="text-2xl font-bold text-chart-3">
               {trainsets.filter((t) => t.status === "Active").length}
             </div>
             <div className="text-sm text-muted-foreground">Active</div>
-            <div className="mt-2 h-1 bg-chart-3 rounded-full"></div>
+            <div className="mt-3 h-1 bg-chart-3 rounded-full"></div>
           </div>
-          <div className="bg-card rounded-lg border p-4 text-center hover:shadow-md transition-shadow">
+          <div className="bg-muted/40 rounded-xl p-4 text-center hover:shadow-md hover:bg-muted/60 transition-all">
             <div className="text-2xl font-bold text-secondary">
               {trainsets.filter((t) => t.status === "Maintenance").length}
             </div>
             <div className="text-sm text-muted-foreground">In Maintenance</div>
-            <div className="mt-2 h-1 bg-secondary rounded-full"></div>
+            <div className="mt-3 h-1 bg-secondary rounded-full"></div>
           </div>
-          <div className="bg-card rounded-lg border p-4 text-center hover:shadow-md transition-shadow">
+          <div className="bg-muted/40 rounded-xl p-4 text-center hover:shadow-md hover:bg-muted/60 transition-all">
             <div className="text-2xl font-bold text-destructive">
               {trainsets.reduce((sum, t) => sum + t.jobCardStatus.openJobCards, 0)}
             </div>
             <div className="text-sm text-muted-foreground">Open Jobs</div>
-            <div className="mt-2 h-1 bg-destructive rounded-full"></div>
+            <div className="mt-3 h-1 bg-destructive rounded-full"></div>
           </div>
         </div>
 
+
         {/* Top controls bar (search + view toggles + status/fitness/select + settings) */}
-        <div className="bg-card rounded-lg border p-6 shadow-sm">
+        <div className="bg-muted/40 rounded-xl p-6 shadow-sm">
           <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
             <div className="flex-1 max-w-md">
               <div className="relative">
@@ -239,7 +248,7 @@ export default function TrainsetsPage() {
                 {filteredTrainsets.length} of {trainsets.length} trainsets
               </span>
 
-              <div className="flex items-center bg-background border rounded-lg p-1">
+              <div className="flex items-center bg-background  rounded-lg p-1">
                 <Button
                   variant={viewMode === "cards" ? "default" : "ghost"}
                   size="sm"
@@ -266,7 +275,7 @@ export default function TrainsetsPage() {
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value as any)}
-                  className="h-9 px-3 rounded-md border bg-background text-sm"
+                  className="h-9 px-3 rounded-md  bg-background text-sm"
                 >
                   <option value="All">All Status</option>
                   <option value="Active">Active</option>
@@ -280,7 +289,7 @@ export default function TrainsetsPage() {
                 <select
                   value={fitnessFilter}
                   onChange={(e) => setFitnessFilter(e.target.value as any)}
-                  className="h-9 px-3 rounded-md border bg-background text-sm"
+                  className="h-9 px-3 rounded-md  bg-background text-sm"
                 >
                   <option value="All">All Fitness</option>
                   <option value="High">High</option>
@@ -292,15 +301,14 @@ export default function TrainsetsPage() {
               {/* Settings dropdown (always visible now) */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="flex items-center gap-2">
+                  <Button size="sm" className="flex items-center gap-2">
                     <Settings className="w-4 h-4" />
                     Settings
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
                   align="end"
-                  className="w-56 bg-white dark:bg-neutral-900 border border-border shadow-md rounded-md"
-                >
+                  className="w-56 bg-white dark:bg-neutral-900  shadow-md rounded-md">
                   <DropdownMenuLabel>Visible Columns</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuCheckboxItem
@@ -349,117 +357,154 @@ export default function TrainsetsPage() {
 
         {/* Main content */}
         {viewMode === "cards" ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filteredTrainsets.map((trainset) => {
-              const healthScore = trainset.availability_confidence || 0
-              const mockMileageData = [85, 92, 78, 95, 88, 91, 87]
-
-              return (
-                <div
-                  key={trainset.id}
-                  onClick={() => handleRowClick(trainset)}
-                  className="bg-card rounded-xl border hover:shadow-lg transition-all duration-300 cursor-pointer overflow-hidden hover:scale-[1.02] group"
-                >
-                  <div className="p-6 pb-4">
-                    <div className="flex items-start justify-between mb-4">
-                      <div>
-                        <h3 className="text-xl font-bold text-foreground mb-1">Train #{trainset.id}</h3>
-                        <p className="text-sm text-muted-foreground">{trainset.trainname}</p>
-                      </div>
-                      <div className="flex flex-col gap-2 items-end">
-                        <Badge
-                          className={`text-xs font-medium border-0 ${
-                            trainset.status === "Active"
-                              ? "bg-chart-3/20 text-chart-3"
-                              : trainset.status === "Maintenance"
-                              ? "bg-secondary/20 text-secondary"
-                              : "bg-destructive/20 text-destructive"
-                          }`}
-                        >
-                          {trainset.status}
-                        </Badge>
-                        {trainset.jobCardStatus.openJobCards > 0 && (
-                          <div className="text-xs text-destructive font-medium bg-destructive/10 px-2 py-1 rounded">
-                            Job Card: Open
-                          </div>
-                        )}
-                        <div className="text-xs text-chart-3 font-medium bg-chart-3/10 px-2 py-1 rounded">
-                          Cert: Valid
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+          {filteredTrainsets.map((trainset) => {
+            const healthScore = trainset.availability_confidence || 0
+            const mileageData: number[] = Array.isArray((trainset as any).mileage)
+              ? ((trainset as any).mileage as number[])
+              : typeof (trainset as any).mileage === "number"
+              ? [((trainset as any).mileage as number)]
+              : [
+                  (trainset as any).mileage?.totalMileageKM ?? 0,
+                  (trainset as any).mileage?.mileageSinceLastServiceKM ?? 0,
+                  (trainset as any).mileage?.mileageBalanceVariance ?? 0,
+                ]
+            const mileageTotal: number =
+              typeof (trainset as any).mileage === "number"
+                ? ((trainset as any).mileage as number)
+                : (trainset as any).mileage?.totalMileageKM ?? 0
+            const formatKm = (n: number) =>
+              n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M km` : n >= 1_000 ? `${(n / 1_000).toFixed(1)}k km` : `${n} km`
+        
+            return (
+              <div
+                key={trainset.id}
+                onClick={() => handleRowClick(trainset)}
+                className="bg-gradient-to-br from-background via-card to-background/80 rounded-3xl shadow-md hover:shadow-2xl transition-all duration-300 cursor-pointer overflow-hidden hover:scale-[1.02] group"
+              >
+                {/* Header */}
+                <div className="p-6 pb-4 bg-gradient-to-r from-muted/40 to-muted/10">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h3 className="text-xl font-extrabold text-foreground flex items-center gap-2">
+                        🚆 {trainset.trainname}
+                      </h3>
+                      <p className="text-xs text-muted-foreground">Train {trainset.trainID}</p>
+                    </div>
+                    <div className="flex flex-col gap-2 items-end">
+                      <Badge
+                        className={`text-xs px-2 py-1 font-medium rounded-md shadow-sm ${
+                          trainset.status === "Active"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : trainset.status === "Maintenance"
+                            ? "bg-amber-100 text-amber-700"
+                            : "bg-red-100 text-red-700"
+                        }`}
+                      >
+                        {trainset.status}
+                      </Badge>
+                      {trainset.jobCardStatus.openJobCards > 0 && (
+                        <div className="text-xs text-red-600 font-semibold bg-red-100 px-2 py-1 rounded-md shadow-sm">
+                          ⚠️ Job Card: Open
                         </div>
-                      </div>
+                      )}
                     </div>
-
-                    <div className="flex items-center justify-between mb-6">
-                      <div>
-                        <div className="text-sm font-semibold text-foreground mb-1">Health Score</div>
-                        <div className="text-xs text-muted-foreground">Overall system health</div>
-                      </div>
-                      <CircularProgress value={healthScore} color={getHealthScoreColor(healthScore)} size={56} />
+                  </div>
+                </div>
+        
+                {/* Body */}
+                <div className="p-6 space-y-8">
+                  {/* Health Score */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-foreground">Health Score</div>
+                      <div className="text-xs text-muted-foreground">Overall system health</div>
                     </div>
-
-                    <div className="grid grid-cols-2 gap-4 mb-6">
-                      <div className="space-y-2">
+                    <CircularProgress value={healthScore} size={70} />
+                  </div>
+        
+        
+                  <div className="grid grid-cols-2 gap-6">
+                      {/* Availability */}
+                      <div className="space-y-2 text-center">
                         <div className="text-xs font-medium text-muted-foreground">Availability</div>
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1">
-                            <Progress value={trainset.availability_confidence || 0} className="h-2" />
-                          </div>
-                          <span className="text-sm font-semibold text-foreground min-w-[35px]">
+                        <div className="flex flex-col items-center gap-2">
+                          <Progress value={trainset.availability_confidence || 0} className="h-2 w-20 rounded-full" />
+                          <span className="text-sm font-semibold text-foreground">
                             {trainset.availability_confidence || 0}%
                           </span>
                         </div>
                       </div>
-                      <div className="space-y-2">
+
+                      {/* Weekly Mileage */}
+                      <div className="space-y-2 text-center">
                         <div className="text-xs font-medium text-muted-foreground">Weekly Mileage</div>
-                        <div className="flex items-center justify-between">
-                          <MiniChart data={mockMileageData} color="bg-chart-1" />
-                          <span className="text-sm font-semibold text-foreground">12.8k km</span>
+                        <div className="flex items-center justify-center gap-3">
+                          <MiniChart data={mileageData} color="bg-chart-1" />
+                          <span className="text-sm font-semibold text-foreground">
+                            {formatKm(mileageTotal)}
+                          </span>
                         </div>
                       </div>
+                      </div>
+        
+                  {/* Location + Open Jobs */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="rounded-xl p-4 text-center bg-gradient-to-br from-muted/30 to-muted/10 shadow-inner">
+                      <div className="text-lg font-bold text-foreground flex items-center justify-center gap-1">
+                        📍 {trainset.stabling_position || "N/A"}
+                      </div>
+                      <div className="text-xs text-muted-foreground">Location</div>
                     </div>
-
-                    <div className="grid grid-cols-2 gap-3 mb-4">
-                      <div className="bg-muted/30 rounded-lg p-4 text-center">
-                        <div className="text-2xl font-bold text-foreground mb-1">
-                          {trainset.stabling_position || "N/A"}
-                        </div>
-                        <div className="text-xs font-medium text-muted-foreground">Location</div>
+                    <div className="rounded-xl p-4 text-center bg-gradient-to-br from-muted/30 to-muted/10 shadow-inner">
+                      <div
+                        className={`text-lg font-bold flex items-center justify-center gap-1 ${
+                          trainset.jobCardStatus.openJobCards > 0 ? "text-red-600" : "text-emerald-600"
+                        }`}
+                      >
+                        🛠 {trainset.jobCardStatus.openJobCards}
                       </div>
-                      <div className="bg-muted/30 rounded-lg p-4 text-center">
-                        <div
-                          className={`text-2xl font-bold mb-1 ${
-                            trainset.jobCardStatus.openJobCards > 0 ? "text-destructive" : "text-chart-3"
-                          }`}
-                        >
-                          {trainset.jobCardStatus.openJobCards}
-                        </div>
-                        <div className="text-xs font-medium text-muted-foreground">Open Jobs</div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-3 text-center">
-                      <div className="bg-background/50 rounded-lg p-3">
-                        <div className="text-sm font-bold text-foreground">98.5%</div>
-                        <div className="text-xs text-muted-foreground">HVAC</div>
-                      </div>
-                      <div className="bg-background/50 rounded-lg p-3">
-                        <div className="text-sm font-bold text-secondary">21%</div>
-                        <div className="text-xs text-muted-foreground">Brake Wear</div>
-                      </div>
-                      <div className="bg-background/50 rounded-lg p-3">
-                        <div className="text-sm font-bold text-chart-3">171h</div>
-                        <div className="text-xs text-muted-foreground">Branding</div>
-                      </div>
+                      <div className="text-xs text-muted-foreground">Open Jobs</div>
                     </div>
                   </div>
-
-                  <div className="px-6 py-4 bg-muted/20 border-t group-hover:bg-muted/40 transition-colors">
-                    <div className="text-xs text-muted-foreground text-center font-medium">Click to view details →</div>
+        
+                  {/* Sub-metrics */}
+                  <div className="grid grid-cols-3 gap-4 text-center">
+                    <div className="rounded-lg p-3 bg-muted/20 backdrop-blur-sm shadow-sm">
+                      <div className="text-sm font-bold text-foreground">
+                        {(() => {
+                          const hvacWear = trainset.mileage.hvacWearPercent ?? 0
+                          const hvacHealth = Math.max(0, Math.min(100, 100 - Number(hvacWear)))
+                          return `${hvacHealth.toFixed(1)}%`
+                        })()}
+                      </div>
+                      <div className="text-xs text-muted-foreground">HVAC</div>
+                    </div>
+                    <div className="rounded-lg p-3 bg-muted/20 backdrop-blur-sm shadow-sm">
+                      <div className="text-sm font-bold text-amber-500">
+                        {`${(trainset.mileage.brakepadWearPercent ?? 0)}%`}
+                      </div>
+                      <div className="text-xs text-muted-foreground">Brake Wear</div>
+                    </div>
+                    <div className="rounded-lg p-3 bg-muted/20 backdrop-blur-sm shadow-sm">
+                      <div className="text-sm font-bold text-emerald-500">
+                        {`${(trainset.branding.exposureHoursAccrued ?? 0)}h`}
+                      </div>
+                      <div className="text-xs text-muted-foreground">Branding</div>
+                    </div>
                   </div>
                 </div>
-              )
-            })}
-          </div>
+        
+                {/* Footer */}
+                <div className="px-6 py-4 bg-gradient-to-r from-muted/20 to-muted/10 text-center group-hover:from-muted/40 group-hover:to-muted/20 transition-colors">
+                  <div className="text-xs text-muted-foreground font-medium">Click to view details →</div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        
+        
         ) : (
           <div className="bg-card rounded-lg border overflow-hidden shadow-sm">
             <CompactTable data={filteredTrainsets} onRowClick={handleRowClick} />

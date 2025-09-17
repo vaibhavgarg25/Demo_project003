@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useState, useEffect, useMemo } from "react"
 import type { Trainset } from "@/lib/mock-data"
+import { boolean } from "zod"
 
 interface TrainsetModalProps {
   isOpen: boolean
@@ -22,9 +23,9 @@ export function TrainsetModal({ isOpen, onClose, trainset }: TrainsetModalProps)
 
   // Safe access to nested properties with fallbacks (non-hook values)
   const jobCardStatus = (trainset as any).jobCardStatus || {}
-  const cleaningStatus = (trainset as any).cleaning_status || {}
-  const maintenanceHistory = (trainset as any).maintenance_history || {}
-  const brandingStatus = (trainset as any).branding_status || {}
+  const cleaningStatus = trainset.cleaning || {}
+  const brandingStatus = trainset.branding || {}
+  const maintenanceHistory = trainset.maintenance_history || []
 
   // Visual health score (purely presentational) — useMemo is a hook and must run every render
   const healthScore = useMemo(() => {
@@ -77,6 +78,14 @@ export function TrainsetModal({ isOpen, onClose, trainset }: TrainsetModalProps)
 
   // Small utility to format fallback strings
   const safe = (v: any, fallback = "N/A") => (v !== undefined && v !== null && v !== "" ? v : fallback)
+
+  // Helper to format date as YYYY-MM-DD
+  const formatDate = (dateStr: string | undefined) => {
+    if (!dateStr) return "N/A"
+    const d = new Date(dateStr)
+    if (isNaN(d.getTime())) return "N/A"
+    return d.toISOString().slice(0, 10)
+  }
 
   // Early return only after all hooks have been called
   if (!isOpen || !isMounted) return null
@@ -310,86 +319,58 @@ export function TrainsetModal({ isOpen, onClose, trainset }: TrainsetModalProps)
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <Sparkles className="w-5 h-5" style={{ color: "var(--muted-foreground)" }} />
                   <div>
-                    <div style={{ color: "var(--foreground)", fontWeight: 700 }}>Cleaning</div>
+                    <div style={{ fontWeight: 600, color: "var(--foreground)" }}>Cleaning</div>
                     <div style={{ color: "var(--muted-foreground)", marginTop: 4, fontSize: 13 }}>
-                      Last: {typeof cleaningStatus === "object" && "lastCleaned" in cleaningStatus ? (cleaningStatus as any).lastCleaned : "N/A"}
+                      Last: {formatDate(cleaningStatus.lastCleanedDate)}
                       {" · "}
-                      Next: {typeof cleaningStatus === "object" && "nextCleaning" in cleaningStatus ? (cleaningStatus as any).nextCleaning : "N/A"}
+                      Required: {cleaningStatus.cleaningRequired === true ? "Required" : cleaningStatus.cleaningRequired === false ? "Not Required" : "N/A"}
                     </div>
                   </div>
                 </div>
                 <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 12, color: "var(--muted-foreground)" }}>Detail Level</div>
-                    <div style={{ marginTop: 6 }}>
-                      <Badge
-                        style={{
-                          backgroundColor: "transparent",
-                          color: "var(--foreground)",
-                          border: "1px solid var(--border)",
-                          borderRadius: 8,
-                          padding: "6px 10px",
-                        }}
-                      >
-                        {typeof cleaningStatus === "object" && "detailLevel" in cleaningStatus ? (cleaningStatus as any).detailLevel : "N/A"}
-                      </Badge>
+                    <div style={{ fontSize: 13, color: "var(--muted-foreground)" }}>Detail Level</div>
+                    <div style={{ fontWeight: 700, color: "var(--foreground)" }}>
+                      {safe(cleaningStatus.cleaningSlotStatus)}
                     </div>
                   </div>
                   <div style={{ width: 84, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <div style={{ textAlign: "center" }}>
-                      <div style={{ fontSize: 12, color: "var(--muted-foreground)" }}>Crew</div>
-                      <div style={{ fontWeight: 700, color: "var(--foreground)" }}>{(cleaningStatus as any).cleaningCrewAssigned ?? "—"}</div>
+                    <div style={{ fontSize: 13, color: "var(--muted-foreground)" }}>Crew</div>
+                    <div style={{ fontWeight: 700, color: "var(--foreground)", marginLeft: 8 }}>
+                      {typeof cleaningStatus.cleaningCrewAssigned === "number"
+                        ? cleaningStatus.cleaningCrewAssigned
+                        : 0}
                     </div>
                   </div>
                 </div>
               </div>
-
-              <div style={{ padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--card)" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <Palette className="w-5 h-5" style={{ color: "var(--muted-foreground)" }} />
-                  <div>
-                    <div style={{ color: "var(--foreground)", fontWeight: 700 }}>Branding</div>
-                    <div style={{ color: "var(--muted-foreground)", marginTop: 4, fontSize: 13 }}>
-                      Type: {typeof brandingStatus === "object" && "type" in brandingStatus ? (brandingStatus as any).type : "N/A"}
+              {brandingStatus.brandingActive === true && (
+                <div style={{ padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--card)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <Palette className="w-5 h-5" style={{ color: "var(--muted-foreground)" }} />
+                    <div>
+                      <div style={{ fontWeight: 600, color: "var(--foreground)" }}>Branding</div>
+                      <div style={{ color: "var(--muted-foreground)", marginTop: 4, fontSize: 13 }}>
+                        Type: {"True"}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, color: "var(--muted-foreground)" }}>Priority</div>
+                      <div style={{ fontWeight: 700, color: "var(--foreground)" }}>
+                        {safe(brandingStatus.brandCampaignID)}
+                      </div>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, color: "var(--muted-foreground)" }}>Expires</div>
+                      <div style={{ fontWeight: 700, color: "var(--foreground)" }}>
+                        {safe(brandingStatus.exposureHoursTarget)}
+                      </div>
                     </div>
                   </div>
                 </div>
-
-                <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center" }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 12, color: "var(--muted-foreground)" }}>Priority</div>
-                    <div style={{ marginTop: 6 }}>
-                      <Badge
-                        style={{
-                          backgroundColor: getPriorityColor(
-                            typeof brandingStatus === "object" && "priority" in brandingStatus
-                              ? (brandingStatus as any).priority
-                              : undefined
-                          ).bg,
-                          color: getPriorityColor(
-                            typeof brandingStatus === "object" && "priority" in brandingStatus
-                              ? (brandingStatus as any).priority
-                              : undefined
-                          ).fg,
-                          borderRadius: 8,
-                          padding: "6px 10px",
-                        }}
-                      >
-                        {typeof brandingStatus === "object" && "priority" in brandingStatus
-                          ? (brandingStatus as any).priority || "N/A"
-                          : "N/A"}
-                      </Badge>
-                    </div>
-                  </div>
-
-                  <div style={{ width: 96, textAlign: "center" }}>
-                    <div style={{ fontSize: 12, color: "var(--muted-foreground)" }}>Expires</div>
-                    <div style={{ marginTop: 6, fontWeight: 700, color: "var(--foreground)" }}>
-                      {typeof brandingStatus === "object" && "expiry" in brandingStatus ? (brandingStatus as any).expiry : "N/A"}
-                    </div>
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
           </div>
 
@@ -403,18 +384,20 @@ export function TrainsetModal({ isOpen, onClose, trainset }: TrainsetModalProps)
                 background: "linear-gradient(180deg, rgba(255,255,255,0.02), transparent)",
               }}
             >
-              <h4 style={{ color: "var(--foreground)", fontWeight: 700 }}>Maintenance</h4>
+              <h4 style={{ color: "var(--foreground)", fontWeight: 700 }}>Operations</h4>
               <div style={{ marginTop: 8, color: "var(--muted-foreground)", fontSize: 13 }}>
-                Last: {typeof maintenanceHistory === "object" && "lastService" in maintenanceHistory ? (maintenanceHistory as any).lastService : "N/A"}
+                Last: {formatDate(maintenanceHistory[0]?.date)}
               </div>
               <div style={{ marginTop: 6, display: "flex", gap: 8 }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 12, color: "var(--muted-foreground)" }}>Next Service</div>
-                  <div style={{ color: "var(--foreground)", fontWeight: 700 }}>{typeof maintenanceHistory === "object" && "nextService" in maintenanceHistory ? (maintenanceHistory as any).nextService : "N/A"}</div>
+  
+                   <div style={{ color: "var(--muted-foreground)", fontSize: 12 }}>Status</div>
+                   <div style={{ color: "var(--foreground)", fontWeight: 700 }}>  {safe(trainset.operations?.operationalStatus)}
+</div>
                 </div>
               </div>
 
-              <div style={{ height: 12, marginTop: 12, borderRadius: 8, background: "var(--border)" }}>
+              {/* <div style={{ height: 12, marginTop: 12, borderRadius: 8, background: "var(--border)" }}>
                 {typeof maintenanceHistory === "object" && (maintenanceHistory as any).service_due_in_days !== undefined ? (
                   <div
                     style={{
@@ -428,12 +411,13 @@ export function TrainsetModal({ isOpen, onClose, trainset }: TrainsetModalProps)
                 ) : (
                   <div style={{ width: "40%", height: "100%", borderRadius: 8, background: "var(--muted-foreground)", opacity: 0.12 }} />
                 )}
-              </div>
+              </div> */}
 
-              <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              {/* <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
-                  <div style={{ color: "var(--muted-foreground)", fontSize: 12 }}>Fitness Expiry</div>
-                  <div style={{ color: "var(--foreground)", fontWeight: 700 }}>{(trainset as any).fitness_expiry || "N/A"}</div>
+                   <div style={{ color: "var(--muted-foreground)", fontSize: 12 }}>Reason</div>
+                   <div style={{ color: "var(--foreground)", fontWeight: 700 }}>  {safe(trainset.operations?.reasonForStatus)}
+                </div>
                 </div>
 
                 <div style={{ textAlign: "center" }}>
@@ -446,9 +430,9 @@ export function TrainsetModal({ isOpen, onClose, trainset }: TrainsetModalProps)
                     <div style={{ fontWeight: 700, color: "var(--foreground)" }}>25</div>
                   </div>
                 </div>
-              </div>
+              </div> */}
 
-              <div style={{ marginTop: 14 }}>
+              {/* <div style={{ marginTop: 14 }}>
                 <Button
                   variant="outline"
                   className="w-full"
@@ -463,7 +447,7 @@ export function TrainsetModal({ isOpen, onClose, trainset }: TrainsetModalProps)
                   <Calendar className="w-4 h-4" />
                   <span style={{ marginLeft: 8 }}>Schedule Maintenance</span>
                 </Button>
-              </div>
+              </div> */}
             </div>
           </aside>
         </div>
