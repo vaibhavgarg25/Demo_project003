@@ -2,17 +2,81 @@ from fastapi import APIRouter, File, UploadFile, Depends, Query
 from fastapi.responses import StreamingResponse
 from typing import Union, List, Any, Optional
 from enum import Enum
+from pydantic import BaseModel
 
 from app.api.rl.models import RLRequest, RLResponse, RLConfig
 from app.api.rl.handler import RLHandler
+from app.core.storage import StorageManager
 
 router = APIRouter(prefix="/rl", tags=["Reinforcement Learning"])
+
+# Pydantic models for file path requests
+class RLFilePathRequest(BaseModel):
+    moo_result_file_path: str
+    runId: str
+    service_quota: Optional[int] = 13
+    episode_days: Optional[int] = 7
+    daily_mileage_if_in_service: Optional[float] = 400.0
+    daily_exposure_hours: Optional[float] = 16.0
+    jobcard_reduction_if_maintenance: Optional[int] = 2
+    jobcard_new_per_day_lambda: Optional[float] = 0.1
+    today: Optional[str] = None
 
 class ResponseFormat(str, Enum):
     """Response format options"""
     json = "json"          # Full JSON response with all details
     csv = "csv"            # CSV file download 
     simple = "simple"      # Lightweight JSON with ID, Score, Rank only
+
+@router.post(
+    "/schedule-from-file",
+    summary="Schedule Train Fleet from File Path (Pipeline Mode)",
+    description="""
+    🚀 **Pipeline RL Scheduling from File Path**
+    
+    Start RL scheduling using a file path to MOO results instead of uploading a file.
+    This endpoint is designed for pipeline integration where the MOO ranking data
+    is already saved to shared storage.
+    
+    **Input:**
+    - moo_result_file_path: Path to MOO result CSV file in shared storage
+    - runId: Pipeline run identifier for tracking
+    - scheduling parameters: All optional RL configuration parameters
+    
+    **Output:**
+    - Success/failure status
+    - RL scheduling result will be saved to shared storage
+    - Webhook notification sent to backend upon completion
+    
+    **RL Algorithm:**
+    Uses PPO (Proximal Policy Optimization) to assign optimal operational status
+    to each train based on fitness, jobcards, mileage, branding, cleaning, and stabling.
+    """
+)
+async def schedule_train_fleet_from_file(
+    request: RLFilePathRequest
+) -> dict:
+    """
+    Start RL scheduling from file path for pipeline integration.
+    Results are saved to shared storage and webhook is sent to backend.
+    """
+    config = RLRequest(
+        csv_path="",  # Will be set from file path
+        service_quota=request.service_quota,
+        episode_days=request.episode_days,
+        daily_mileage_if_in_service=request.daily_mileage_if_in_service,
+        daily_exposure_hours=request.daily_exposure_hours,
+        jobcard_reduction_if_maintenance=request.jobcard_reduction_if_maintenance,
+        jobcard_new_per_day_lambda=request.jobcard_new_per_day_lambda,
+        today=request.today
+    )
+    
+    result = await RLHandler.schedule_from_file_path(
+        request.moo_result_file_path,
+        config,
+        request.runId
+    )
+    return result
 
 @router.post(
     "/schedule",

@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.database import connect_db, disconnect_db
 from app.core.config import settings
+from app.core.storage import StorageManager
 from app.api.health.router import router as health_router
 from app.api.user.router import router as user_router
 from app.api.simulation.router import router as simulation_router
@@ -48,6 +49,7 @@ app = create_application()
 async def startup():
     """Application startup event"""
     await connect_db()
+    await StorageManager.initialize_storage()
 
 @app.on_event("shutdown")
 async def shutdown():

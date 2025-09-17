@@ -12,17 +12,113 @@ from fastapi import HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from app.api.rl.models import RLRequest, RLResponse, RLConfig
 from app.api.rl.RL import TrainSchedulingEnvMultiDay, SEED
+from app.core.storage import StorageManager
+from app.core.config import settings
 
 
 class RLHandler:
-    WEBHOOK_URL = "http://backend:8000/api/webhook/rl-finished"  # Adjust accordingly
+    WEBHOOK_URL = settings.WEBHOOK_RL_URL
 
     @staticmethod
-    async def _send_webhook(runId: str, filePath: str):
+    async def schedule_from_file_path(
+        file_path: str,
+        config: RLRequest,
+        runId: str
+    ) -> dict:
+        """
+        Start RL scheduling from file path for pipeline integration.
+        Saves results to shared storage and sends webhook notification.
+        """
+        temp_path = None
+        try:
+            # Step 1: Load CSV from storage
+            df = await StorageManager.read_csv_from_path(file_path)
+            
+            # Step 2: Save file temporarily for RL processing
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, newline='') as temp_file:
+                temp_path = temp_file.name
+                df.to_csv(temp_file, index=False)
+            
+            config.csv_path = temp_path
+            
+            # Step 3: Load model if not already loaded
+            if not hasattr(TrainSchedulingEnvMultiDay, 'model') or TrainSchedulingEnvMultiDay.model is None:
+                TrainSchedulingEnvMultiDay.load_model()
+            
+            # Step 4: Initialize environment
+            env = TrainSchedulingEnvMultiDay(
+                csv_path=config.csv_path,
+                service_quota=config.service_quota,
+                episode_days=config.episode_days,
+                daily_mileage_if_in_service=config.daily_mileage_if_in_service,
+                daily_exposure_hours=config.daily_exposure_hours,
+                jobcard_reduction_if_maintenance=config.jobcard_reduction_if_maintenance,
+                jobcard_new_per_day_lambda=config.jobcard_new_per_day_lambda,
+                today=config.today,
+                seed=config.seed if config.seed else SEED
+            )
+            
+            # Step 5: Run environment until completion
+            obs, _ = env.reset(seed=SEED)
+            terminated = truncated = False
+            
+            while not terminated and not truncated:
+                action, _states = env.model.predict(obs, deterministic=False)
+                obs, reward, terminated, truncated, info = env.step(int(action))
+            
+            # Step 6: Prepare result DataFrame
+            result_df = df.copy()
+            if env.assigned_actions_history:
+                final_assignments = env.assigned_actions_history[-1]
+                action_map = {0: "In_Service", 1: "Standby", 2: "Under_Maintenance"}
+                result_df["OperationalStatus"] = [action_map.get(int(a), "Unknown") for a in final_assignments]
+            else:
+                result_df["OperationalStatus"] = "Unknown"
+            
+            # Step 7: Save result to storage
+            result_file_path = await StorageManager.save_rl_result(runId, result_df)
+            
+            # Step 8: Send webhook notification
+            await RLHandler._send_webhook(runId, result_file_path)
+            
+            # Step 9: Cleanup temporary file
+            if temp_path and os.path.exists(temp_path):
+                os.remove(temp_path)
+            
+            return {
+                "success": True,
+                "message": "RL scheduling completed successfully",
+                "runId": runId,
+                "result_file_path": result_file_path,
+                "total_trains": len(df),
+                "config_used": config.dict()
+            }
+            
+        except Exception as e:
+            # Cleanup temporary file
+            if temp_path and os.path.exists(temp_path):
+                os.remove(temp_path)
+                
+            error_msg = f"RL scheduling failed: {str(e)}"
+            print(f"[RL Error] {error_msg}")
+            # Still try to send webhook with error info
+            try:
+                await RLHandler._send_webhook(runId, None, error_msg)
+            except:
+                pass  # Don't fail if webhook fails
+            raise HTTPException(status_code=500, detail=error_msg)
+
+    @staticmethod
+    async def _send_webhook(runId: str, filePath: str, error_message: str = None):
         """Send async webhook call to backend after RL scheduling completes"""
         async with httpx.AsyncClient() as client:
             try:
-                payload = {"runId": runId, "filePath": filePath}
+                payload = {
+                    "runId": runId, 
+                    "filePath": filePath,
+                    "success": filePath is not None,
+                    "error": error_message
+                }
                 response = await client.post(RLHandler.WEBHOOK_URL, json=payload, timeout=10)
                 response.raise_for_status()
                 print(f"[RL] Webhook sent successfully → {payload}")
@@ -87,7 +183,7 @@ class RLHandler:
             result_df.to_csv(output_path, index=False)
 
             # Step 8: Fire webhook
-            await RLHandler._send_webhook(runId, output_path)
+            await RLHandler._send_webhook(runId, output_path, None)
 
             # Step 9: Return CSV Response
             return RLHandler.create_csv_response(result_df, "rl_schedule.csv")

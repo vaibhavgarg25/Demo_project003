@@ -7,12 +7,61 @@ import httpx  # 👈 added for webhook call
 
 from app.api.moo.models import MooConfig, MooResponse, TrainRankingResult, MooRankingOnly
 from app.api.moo.service import MooService
+from app.core.storage import StorageManager
+from app.core.config import settings
 
 
 class MooHandler:
     """Handler class for MOO (Multi-Objective Optimization) API operations"""
 
-    WEBHOOK_URL = "http://backend:8000/api/webhook/moo-finished"  
+    WEBHOOK_URL = settings.WEBHOOK_MOO_URL
+
+    @staticmethod
+    async def rank_from_file_path(
+        file_path: str,
+        config: MooConfig,
+        runId: str
+    ) -> dict:
+        """
+        Start MOO ranking from file path for pipeline integration.
+        Saves results to shared storage and sends webhook notification.
+        """
+        try:
+            # Step 1: Load CSV from storage
+            df = await StorageManager.read_csv_from_path(file_path)
+            
+            # Step 2: Run MOO ranking
+            moo_service = MooService(config)
+            ranked_df = moo_service.rank_trains(df)
+            
+            print("=== MOO Train Ranking Results (Pipeline) ===")
+            for _, row in ranked_df.iterrows():
+                print(f"Train {row['TrainID']} | Score: {row['Score']} | Rank: {row['Rank']}")
+            
+            # Step 3: Save results to storage
+            result_file_path = await StorageManager.save_moo_result(runId, ranked_df)
+            
+            # Step 4: Send webhook notification
+            await MooHandler._send_webhook(runId, result_file_path)
+            
+            return {
+                "success": True,
+                "message": "MOO ranking completed successfully",
+                "runId": runId,
+                "result_file_path": result_file_path,
+                "total_trains": len(df),
+                "config_used": config.dict()
+            }
+            
+        except Exception as e:
+            error_msg = f"MOO ranking failed: {str(e)}"
+            print(f"[MOO Error] {error_msg}")
+            # Still try to send webhook with error info
+            try:
+                await MooHandler._send_webhook(runId, None, error_msg)
+            except:
+                pass  # Don't fail if webhook fails
+            raise HTTPException(status_code=500, detail=error_msg)
 
     @staticmethod
     async def process_csv_file(file: UploadFile) -> pd.DataFrame:
@@ -64,11 +113,16 @@ class MooHandler:
         )
 
     @staticmethod
-    async def _send_webhook(run_id: str, file_path: str):
+    async def _send_webhook(run_id: str, file_path: str, error_message: str = None):
         """Send webhook notification to backend"""
         async with httpx.AsyncClient() as client:
             try:
-                payload = {"runId": run_id, "filePath": file_path}
+                payload = {
+                    "runId": run_id, 
+                    "filePath": file_path,
+                    "success": file_path is not None,
+                    "error": error_message
+                }
                 resp = await client.post(MooHandler.WEBHOOK_URL, json=payload, timeout=10)
                 resp.raise_for_status()
                 print(f"[MOO] Webhook sent successfully → {payload}")
@@ -98,7 +152,7 @@ class MooHandler:
 
             # 🔔 Fire webhook after MOO completion
             if run_id:
-                await MooHandler._send_webhook(run_id, output_path)
+                await MooHandler._send_webhook(run_id, output_path, None)
 
             if return_csv:
                 return MooHandler.create_csv_response(ranked_df)
@@ -135,7 +189,7 @@ class MooHandler:
 
             # 🔔 Fire webhook
             if run_id:
-                await MooHandler._send_webhook(run_id, output_path)
+                await MooHandler._send_webhook(run_id, output_path, None)
 
             simple_results = []
             for _, row in ranked_df.iterrows():

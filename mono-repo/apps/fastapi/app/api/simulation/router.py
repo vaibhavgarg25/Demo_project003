@@ -1,18 +1,62 @@
-from fastapi import APIRouter, File, UploadFile, Depends
+from fastapi import APIRouter, File, UploadFile, Depends, Query
 from fastapi.responses import StreamingResponse
+from typing import Optional
+from pydantic import BaseModel
 
 from app.api.simulation.models import SimulationConfig
 from app.api.simulation.handler import SimulationHandler
+from app.core.storage import StorageManager
+
+# Pydantic models for file path requests
+class SimulationFilePathRequest(BaseModel):
+    file_path: str
+    runId: str
+    days_to_simulate: int = 1
 
 router = APIRouter(prefix="/simulation", tags=["simulation"])
 
 def create_simulation_config(
-    days_to_simulate: int = 1
-) -> SimulationConfig:
+    days_to_simulate: int = 1,
+    runId: Optional[str] = Query(None, description="Pipeline run ID for webhook notification")
+) -> tuple[SimulationConfig, Optional[str]]:
     """Create simulation configuration from query parameters"""
     return SimulationConfig(
         days_to_simulate=days_to_simulate
+    ), runId
+
+@router.post(
+    "/start-from-file",
+    summary="Start Simulation from File Path (Pipeline Mode)",
+    description="""
+    Start simulation using a file path instead of uploading a file.
+    This endpoint is designed for pipeline integration where the train data
+    is already saved to shared storage.
+    
+    **Input:**
+    - file_path: Path to CSV file in shared storage
+    - runId: Pipeline run identifier for tracking
+    - days_to_simulate: Number of days to simulate (default: 1)
+    
+    **Output:**
+    - Success/failure status
+    - Simulation result will be saved to shared storage
+    - Webhook notification sent to backend upon completion
+    """
+)
+async def start_simulation_from_file(
+    request: SimulationFilePathRequest
+) -> dict:
+    """
+    Start simulation from file path for pipeline integration.
+    Results are saved to shared storage and webhook is sent to backend.
+    """
+    config = SimulationConfig(days_to_simulate=request.days_to_simulate)
+    result = await SimulationHandler.simulate_from_file_path(
+        request.file_path, 
+        config, 
+        request.runId
     )
+    return result
 
 @router.post(
     "/",
@@ -42,7 +86,7 @@ def create_simulation_config(
 )
 async def simulate_train_fleet(
     file: UploadFile = File(..., description="CSV file containing train fleet data"),
-    config: SimulationConfig = Depends(create_simulation_config)
+    config_and_runid: tuple[SimulationConfig, Optional[str]] = Depends(create_simulation_config)
 ) -> StreamingResponse:
     """
     Main endpoint for train fleet simulation.
@@ -51,7 +95,8 @@ async def simulate_train_fleet(
     For single day simulation, returns a CSV file.
     For multiple days, returns a ZIP file with individual CSV files for each day.
     """
-    return await SimulationHandler.simulate_train_fleet(file, config)
+    config, runId = config_and_runid
+    return await SimulationHandler.simulate_train_fleet(file, config, runId)
 
 @router.get(
     "/config/default",

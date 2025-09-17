@@ -2,17 +2,65 @@ from fastapi import APIRouter, File, UploadFile, Query
 from fastapi.responses import StreamingResponse
 from typing import Union, List, Any
 from enum import Enum
+from pydantic import BaseModel
 
 from app.api.moo.models import MooConfig, MooResponse, MooRankingOnly
 from app.api.moo.handler import MooHandler
+from app.core.storage import StorageManager
 
 router = APIRouter(prefix="/moo", tags=["Multi-Objective Optimization"])
+
+# Pydantic models for file path requests
+class MooFilePathRequest(BaseModel):
+    simulation_result_file_path: str
+    runId: str
+    mileage_limit_before_service: int = 10000
 
 class ResponseFormat(str, Enum):
     """Response format options"""
     json = "json"          # Full JSON response with all details
     csv = "csv"            # CSV file download 
     simple = "simple"      # Simple JSON with only ID, Score, Rank
+
+@router.post(
+    "/rank-from-file",
+    summary="Rank Train Fleet from File Path (Pipeline Mode)",
+    description="""
+    🚀 **Pipeline MOO Ranking from File Path**
+    
+    Start MOO ranking using a file path to simulation results instead of uploading a file.
+    This endpoint is designed for pipeline integration where the simulation data
+    is already saved to shared storage.
+    
+    **Input:**
+    - simulation_result_file_path: Path to simulation result CSV file in shared storage
+    - runId: Pipeline run identifier for tracking
+    - mileage_limit_before_service: Mileage limit threshold (default: 10000 km)
+    
+    **Output:**
+    - Success/failure status
+    - MOO ranking result will be saved to shared storage
+    - Webhook notification sent to backend upon completion
+    
+    **MOO Scoring Algorithm:**
+    Same comprehensive scoring as the main `/rank` endpoint with fitness certificates,
+    job cards, branding, mileage, wear & tear, cleaning, and operational status.
+    """
+)
+async def rank_train_fleet_from_file(
+    request: MooFilePathRequest
+) -> dict:
+    """
+    Start MOO ranking from file path for pipeline integration.
+    Results are saved to shared storage and webhook is sent to backend.
+    """
+    config = MooConfig(mileage_limit_before_service=request.mileage_limit_before_service)
+    result = await MooHandler.rank_from_file_path(
+        request.simulation_result_file_path,
+        config,
+        request.runId
+    )
+    return result
 
 @router.post(
     "/rank",

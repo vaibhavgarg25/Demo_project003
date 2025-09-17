@@ -4,11 +4,16 @@ import dotenv from "dotenv";
 import authRoutes from "./routes/authRoutes.js";
 import trainRoutes from "./routes/trainRoutes.js";
 import uploadRoutes from "./routes/uploadroutes.js";
+import pipelineRoutes from "./routes/pipelineRoutes.js";
 import webhookRoutes from "./routes/webhookRoutes.js"; // Enable pipeline webhooks
 import { setSseBroadcaster, startSimulationRun } from "./services/pipelineService.js";
+import { StorageManager } from "./utils/storageManager.js";
 import cron from "node-cron";
 
 dotenv.config({ debug: false });
+
+// Initialize storage on startup
+StorageManager.initializeStorage().catch(console.error);
 
 const app = express();
 const port = process.env.PORT || 8000;
@@ -24,6 +29,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api/upload", uploadRoutes);
+app.use("/api/pipeline", pipelineRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/train", trainRoutes);
 app.use("/api/webhook", webhookRoutes); 
@@ -65,6 +71,7 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
     res.status(status).json({ message: err?.message || "Internal Server Error" });
 });
 
-app.listen(port, () => {
+app.listen(port, async () => {
     console.log(`🌐 Server running at http://localhost:${port}`);
+    console.log(`📁 Shared storage path: ${process.env.SHARED_STORAGE_PATH || '/shared/storage'}`);
 });
