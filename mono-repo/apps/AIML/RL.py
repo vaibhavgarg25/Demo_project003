@@ -19,6 +19,13 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 import copy
 import os
+import torch, random
+
+# Set seed for reproducibility
+SEED = 42
+np.random.seed(SEED)
+random.seed(SEED)
+torch.manual_seed(SEED)
 
 # --- helper functions (same as before) ---
 def parse_date(d):
@@ -518,6 +525,7 @@ if __name__ == "__main__":
                                     jobcard_reduction_if_maintenance=2,
                                     jobcard_new_per_day_lambda=0.05,
                                     today=None)
+    env.reset(seed=SEED)
     venv = DummyVecEnv([lambda: env])
     model = PPO("MlpPolicy", venv, verbose=1, tensorboard_log="./kmrl_tb_multiday/")
     model.learn(total_timesteps=100000)  # increase as needed
@@ -531,17 +539,18 @@ if __name__ == "__main__":
         total_r += r
     print("Episode reward:", total_r)
     env.render()
-    next_day_assignments = env.assigned_actions_day[0]  # first day only
+    next_day_assignments = env.assigned_actions_day  # already 1D array with all trains
+    action_map = {
+        0: "In_Service",
+        1: "Standby",
+        2: "Under_Maintenance"
+    }
+    next_day_assignments_str = [action_map[int(a)] for a in next_day_assignments]
 
-    action_map = {0: "In_service", 1: "Standby", 2: "Under_maintenance"}
-    next_day_assignments_str = [action_map[a] for a in next_day_assignments]
+    import pandas as pd
+    df = pd.read_csv(CSV_PATH)  # your input file
 
-    # Load original CSV
-    df = pd.read_csv(CSV_PATH)
-
-    # Update OperationalStatus column
     df["OperationalStatus"] = next_day_assignments_str
+    df.to_csv("next_day_output.csv", index=False)
 
-    # Save CSV for next day
-    df.to_csv("updated_trains_next_day.csv", index=False)
-    print("✅ Saved updated_trains_next_day.csv with string OperationalStatus.")
+    print("✅ Next day schedule saved to next_day_output.csv")
