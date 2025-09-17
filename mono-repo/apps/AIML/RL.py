@@ -1,556 +1,648 @@
-# kmrl_rl_env_multiday.py
-# Multi-day simulator environment (gymnasium) that extends the single-night env.
-# - Each episode runs for episode_days (e.g., 7).
-# - After each night (after RL decides for all 25 trains), env advances the world:
-#     * mileage, exposure, cleaning, jobcards, fitness days->days-1
-# - A simple MOO surrogate recomputes a Score each day (you can replace with your real MOO)
-# - Per-assignment reward uses your previously shaped rewards.
-#
-# Usage: put your daily CSV path in CSV_PATH and run. For SB3 we wrap with DummyVecEnv.
-#
-# NOTE: tune the simulation parameters (daily mileage, exposure hours) to fit KMRL reality.
+"""
+COMMANDS FOR RUNNING ( IN ORDER ):
+1) python RL.py --mode infer --csv final1output.csv --out next_day_plan_heuristic.csv
+2) python RL.py --mode train --csv final1output.csv --timesteps 100000 --model kmrl_ppo_model
+3) python RL.py --mode infer --csv final1output.csv --model kmrl_ppo_model --out next_day_plan_rl.csv
+"""
 
-import gymnasium as gym
-from gymnasium import spaces
+import os
+import argparse
+import copy
+import json
+import math
+import random
+import datetime
+from typing import Dict, Any, Tuple
+
 import numpy as np
 import pandas as pd
-import datetime
-from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv
-import copy
-import os
-import torch, random
+from sklearn.preprocessing import MinMaxScaler
 
-# Set seed for reproducibility
-SEED = 42
-np.random.seed(SEED)
-random.seed(SEED)
-torch.manual_seed(SEED)
+# try importing stable-baselines3 only if available
+try:
+    from stable_baselines3 import PPO
+    from stable_baselines3.common.vec_env import DummyVecEnv
+    from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
+    import gymnasium as gym
+    from gymnasium import spaces
+    SB3_AVAILABLE = True
+except Exception:
+    SB3_AVAILABLE = False
+    print("Warning: stable-baselines3 not available")
 
-# --- helper functions (same as before) ---
+# ----------------------- CONFIG -----------------------
+DEFAULT_CONFIG = {
+    "service_quota": 13,
+    "daily_mileage": 436.96,
+    "daily_mileage_noise_sigma": 20.0,
+    "jobcard_close_rate": 1,
+    "brake_wear_daily": 0.27,
+    "hvac_wear_daily": 0.16,
+    "brake_threshold": 80.0,
+    "hvac_threshold": 90.0,
+    "mileage_service_threshold": 10000.0,
+    "mileage_reset_close_days": 2,
+    "brake_maintenance_days": 1,
+    "hvac_maintenance_days": 3,
+    "fitness_escalation_days": {"RollingStock": 4, "Signalling": 5, "Telecom": 5},
+    "fitness_validity_days": {"RollingStock": 365*2, "Signalling": 365*5, "Telecom": 365*4},
+    "cleaning_bays": 3,
+    "stabling_bays": 15,
+    "per_day_operating_hours": 16,
+    "brand_campaign_every_n_days": 45,
+    "brand_campaigns_each_time": 3,
+    "brand_targets": [280, 300, 320, 340],
+    "brand_quota_choices": [14, 15, 16],
+    "rw": {
+        "fit_safe": 10.0,  # Reduced from 20
+        "fit_violation": -100.0,  # Reduced from -200
+        "quota_hit": 100.0,  # Increased from 50
+        "quota_miss": -50.0,  # Increased penalty
+        "maint_for_high_priority": 20.0,  # Reduced from 30
+        "inservice_jobcard_penalty_per_job": -2.0,  # Reduced from -5
+        "mileage_balance_coeff": -0.01,  # Reduced
+        "brand_progress_per_hour": 0.5,
+        "brand_completion_bonus": 40.0,  # Reduced from 80
+        "cleaning_done": 5.0,  # Reduced from 10
+        "shunt_penalty_per_move": -0.2,  # Reduced from -0.5
+        "jobcard_unresolved_daily_penalty": -2.0,  # Reduced from -5
+        "standby_penalty": -5.0,  # New: penalty for excessive standby
+        "maintenance_when_needed": 15.0  # New: reward for maintenance when actually needed
+    }
+}
+
+# ---------------------- Helpers -----------------------
+
 def parse_date(d):
-    if pd.isna(d) or str(d).strip() == "":
+    if pd.isna(d) or d is None or str(d).strip() == "":
         return None
-    for fmt in ("%d-%m-%Y", "%Y-%m-%d", "%d/%m/%Y"):
+    for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y"):
         try:
             return datetime.datetime.strptime(str(d).strip(), fmt).date()
         except Exception:
             pass
-    return None
+    try:
+        return pd.to_datetime(d).date()
+    except Exception:
+        return None
 
-def days_until(date_obj, ref_date=None):
+def days_until(date_obj, ref_date):
     if date_obj is None:
-        return 9999
-    if ref_date is None:
-        ref_date = datetime.date.today()
+        return 0
     return (date_obj - ref_date).days
 
-def safe_div(a, b, eps=1e-6):
-    return a / (b + eps)
-
-# --- MOO surrogate (simple weighted linear score) ---
-def compute_moo_score(df_row):
-    """
-    Surrogate scoring function to mimic MOO ranking. Replace with real MOO later.
-    Higher score = more desirable to be In_Service.
-    Weights are heuristic; tune as needed or replace by your MOO output.
-    """
-    # weights (you can customize)
-    w = {
-        "fitness_days": 0.35,
-        "open_jobcards": -0.25,
-        "mileage_abs": -0.15,
-        "branding": 0.25,
-        "cleaning_required": -0.1,
-        "shunting": -0.05
-    }
-
-    # extract safe values
-    signalling_days = float(df_row.get("SignallingFitnessExpiryDate_days", 9999))
-    telecom_days = float(df_row.get("TelecomFitnessExpiryDate_days", 9999))
-    min_days = min(signalling_days, telecom_days)
-    fitness_score = safe_div(min_days, 365.0)  # normalize to roughly 0..1
-
-    open_jobcards = float(df_row.get("OpenJobCards", 0.0))
-    open_job_score = -safe_div(open_jobcards, 10.0)
-
-    mileage_abs = float(df_row.get("MileageBalanceAbs", 0.0)) if "MileageBalanceAbs" in df_row else float(df_row.get("MileageBalanceVariance", 0.0))
-    mileage_score = -safe_div(mileage_abs, max(1.0, float(df_row.get("TotalMileageKM", 1.0))))
-
-    branding_flag = float(df_row.get("BrandingActive_flag", 0.0))
-    cleaning_flag = float(df_row.get("CleaningRequired_flag", 0.0))
-    shunting = float(df_row.get("ShuntingMovesRequired", 0.0))
-    shunt_score = -safe_div(shunting, 10.0)
-
-    score = (w["fitness_days"] * fitness_score +
-             w["open_jobcards"] * open_job_score +
-             w["mileage_abs"] * mileage_score +
-             w["branding"] * branding_flag +
-             w["cleaning_required"] * (-cleaning_flag) +
-             w["shunting"] * shunt_score)
-
-    # scale into 0..100
-    scaled = 50.0 + 50.0 * score
-    return scaled
-
-# --- main env ---
-class TrainSchedulingEnvMultiDay(gym.Env):
-    """
-    Multi-day train scheduling environment.
-    Each 'step' corresponds to *one train assignment* within the current day.
-    After all trains are assigned for the day, env advances the world by one day.
-    Episode terminates after episode_days days.
-    """
-    metadata = {"render.modes": ["human"]}
-
-    def __init__(self, csv_path,
-                 service_quota=13,
-                 episode_days=7,
-                 daily_mileage_if_in_service=400.0,
-                 daily_exposure_hours=16.0,
-                 jobcard_reduction_if_maintenance=2,
-                 jobcard_new_per_day_lambda=0.1,
-                 today=None,
-                 seed=None):
-        super().__init__()
-
-        # load CSV, similar preproc as before
-        self.csv_path = csv_path
-        self.df_orig = pd.read_csv(csv_path, dtype=str).fillna("")
-        self.df = self.df_orig.copy()
-        self.df.columns = [c.strip() for c in self.df.columns]
-
-        # keep a working copy (we'll mutate this during multi-day episodes)
-        self.df_input = self.df.copy()
-        # drop operational status/score/rank for inputs
-        self.df_input = self.df_input.drop(columns=["OperationalStatus", "Score", "Rank"], errors="ignore")
-
-        # convert numeric columns
-        numeric_cols = [
-            "OpenJobCards", "ClosedJobCards", "ExposureHoursAccrued", "ExposureHoursTarget",
-            "ExposureDailyQuota", "TotalMileageKM", "MileageSinceLastServiceKM",
-            "MileageBalanceVariance", "BrakepadWear%", "HVACWear%",
-            "BayPositionID", "ShuntingMovesRequired", "StablingSequenceOrder",
-            "JobCardPriority", "MileageBalanceAbs", "CleaningPriority", "ShuntingPriority"
-        ]
-        for col in numeric_cols:
-            if col in self.df_input.columns:
-                self.df_input[col] = pd.to_numeric(self.df_input[col], errors="coerce").fillna(0)
-
-        # parse dates to days fields
-        date_cols = ["SignallingFitnessExpiryDate", "TelecomFitnessExpiryDate", "RollingStockFitnessExpiryDate",
-                     "LastJobCardUpdate", "LastCleanedDate"]
-        self.today = today if today is not None else datetime.date.today()
-        for c in date_cols:
-            if c in self.df_input.columns:
-                parsed = self.df_input[c].apply(parse_date)
-                self.df_input[c + "_days"] = parsed.apply(lambda d: days_until(d, self.today))
-
-        # flags
-        if "CleaningRequired" in self.df_input.columns:
-            self.df_input["CleaningRequired_flag"] = self.df_input["CleaningRequired"].astype(str).str.lower().apply(lambda x: 1 if x in ["true","1","yes","y","t"] else 0)
-        else:
-            self.df_input["CleaningRequired_flag"] = 0
-
-        if "BrandingActive" in self.df_input.columns:
-            self.df_input["BrandingActive_flag"] = self.df_input["BrandingActive"].astype(str).str.lower().apply(lambda x: 1 if x in ["true","1","yes","y","t"] else 0)
-        else:
-            self.df_input["BrandingActive_flag"] = 0
-
-        # cleaning slot mapping
-        if "CleaningSlotStatus" in self.df_input.columns:
-            def map_clean_slot(x):
-                x = str(x).strip().lower()
-                if x in ["free","f","0","available","empty","open"]:
-                    return 0
-                if x in ["assigned","a","1"]:
-                    return 1
-                if x in ["in_progress","in progress","progress"]:
-                    return 2
-                if x in ["unavailable","na"]:
-                    return 3
-                return 0
-            self.df_input["CleaningSlotStatus"] = self.df_input["CleaningSlotStatus"].apply(map_clean_slot)
-        else:
-            self.df_input["CleaningSlotStatus"] = 0
-
-        # prepare per-train feature list (same as before)
-        self.per_train_feature_names = [
-            "SignallingFitnessExpiryDate_days", "TelecomFitnessExpiryDate_days", "RollingStockFitnessExpiryDate_days",
-            "JobCardStatus", "OpenJobCards", "ClosedJobCards", "LastJobCardUpdate_days",
-            "BrandingActive_flag", "ExposureHoursAccrued", "ExposureHoursTarget", "ExposureDailyQuota",
-            "TotalMileageKM", "MileageSinceLastServiceKM", "MileageBalanceVariance", "MileageBalanceAbs",
-            "BrakepadWear%", "HVACWear%", "CleaningRequired_flag", "CleaningSlotStatus", "BayPositionID",
-            "ShuntingMovesRequired", "StablingSequenceOrder", "JobCardPriority"
-        ]
-        for name in self.per_train_feature_names:
-            if name not in self.df_input.columns:
-                self.df_input[name] = 0
-
-        # encode jobcard status
-        if "JobCardStatus" in self.df_input.columns:
-            self.df_input["JobCardStatus_enc"] = self.df_input["JobCardStatus"].astype(str).str.lower().apply(lambda x: 1 if x.startswith("open") else 0)
-        else:
-            self.df_input["JobCardStatus_enc"] = 0
-        self.per_train_feature_names = [("JobCardStatus_enc" if n=="JobCardStatus" else n) for n in self.per_train_feature_names]
-
-        # finalize
-        self.n_trains = len(self.df_input)
-        if self.n_trains == 0:
-            raise ValueError("CSV empty or not loaded properly")
-        self._build_feature_matrix()
-
-        # action/obs spaces
-        self.action_space = spaces.Discrete(3)
-        self.observation_space = spaces.Box(low=-1e9, high=1e9, shape=(self.n_features+3,), dtype=np.float32)
-
-        # quotas and sim params
-        self.service_quota = service_quota
-        self.remaining_service = service_quota
-        self.episode_days = episode_days
-        self.day_index = 0
-        self.daily_mileage_if_in_service = daily_mileage_if_in_service
-        self.daily_exposure_hours = daily_exposure_hours
-        self.jobcard_reduction_if_maintenance = jobcard_reduction_if_maintenance
-        self.jobcard_new_per_day_lambda = jobcard_new_per_day_lambda
-
-        # internal state
-        self.reset(seed=seed)
-
-        # logging folder
-        self.log_dir = "./kmrl_sim_logs"
-        os.makedirs(self.log_dir, exist_ok=True)
-
-
-    def _build_feature_matrix(self):
-        features = []
-        for idx in range(self.n_trains):
-            row = self.df_input.iloc[idx]
-            vec = []
-            for name in self.per_train_feature_names:
-                val = row.get(name, 0)
-                try:
-                    vec.append(float(val))
-                except Exception:
-                    vec.append(0.0)
-            features.append(vec)
-        self.feature_matrix = np.array(features, dtype=np.float32)
-        self.n_features = self.feature_matrix.shape[1]
-
-
-    def reset(self, *, seed=None, options=None):
-        if seed is not None:
-            np.random.seed(seed)
-        # reset multi-day episode
-        self.day_index = 0
-        # working copy of df_input for simulation (deep copy)
-        self.work_df = self.df_input.copy().reset_index(drop=True)
-        # for day 0 compute initial surrogate scores (MOO)
-        self._compute_and_attach_moo_scores(self.work_df)
-        self.order = np.arange(self.n_trains)
-        # you can randomize self.order if desired each day
-        self.step_idx = 0
-        self.assigned_actions_day = np.full(self.n_trains, -1, dtype=np.int8)  # per-day assigned actions
-        self.assigned_actions_history = []  # list per day
-        self.total_shunting_cost = 0.0
-        self.remaining_service = self.service_quota
-        self.done = False
-        # observation is for first train of day 0
-        obs = self._get_obs()
-        return obs, {}
-
-    def _get_obs(self):
-        cur_feat = self._row_to_feature_vec(self.work_df.iloc[self.order[self.step_idx]])
-        remaining_norm = float(self.remaining_service) / max(1, self.service_quota)
-        shunt_norm = float(self.total_shunting_cost)
-        step_norm = float(self.step_idx) / max(1, self.n_trains)
-        return np.concatenate([cur_feat, np.array([remaining_norm, shunt_norm, step_norm], dtype=np.float32)])
-
-    def _row_to_feature_vec(self, row):
-        vec = []
-        for name in self.per_train_feature_names:
-            val = row.get(name, 0)
-            try:
-                vec.append(float(val))
-            except Exception:
-                vec.append(0.0)
-        return np.array(vec, dtype=np.float32)
-
-    def _compute_and_attach_moo_scores(self, df):
-        # compute a Score column and Rank column in-place
-        scores = []
-        for i in range(len(df)):
-            scores.append(compute_moo_score(df.iloc[i]))
-        df["Score"] = scores
-        df["Rank"] = pd.Series(scores).rank(method="min", ascending=False).astype(int)
-
-    def _train_has_expired_fitness(self, idx):
-        r = self.work_df.iloc[idx]
-        s = float(r.get("SignallingFitnessExpiryDate_days", 9999))
-        t = float(r.get("TelecomFitnessExpiryDate_days", 9999))
-        rsk = float(r.get("RollingStockFitnessExpiryDate_days", 9999))
-        return (s <= 0) or (t <= 0) or (rsk <= 0)
-
-    def step(self, action):
-        # same per-train reward shaping as before (exact user rules)
-        assert self.action_space.contains(int(action)), "Invalid action"
-        cur_idx = self.order[self.step_idx]
-        info = {"raw_action": int(action), "day": self.day_index}
-        reward = 0.0
-
-        # Hard constraint
-        fitness_expired = self._train_has_expired_fitness(cur_idx)
-        if int(action) == 0 and fitness_expired:
-            action = 1
-            reward += -100.0
-            info["overridden_due_to_fitness"] = True
-
-        if int(action) == 0 and self.remaining_service <= 0:
-            action = 1
-            reward += -20.0
-            info["overridden_due_to_quota"] = True
-
-        row = self.work_df.iloc[cur_idx]
-
-        # 1) fitness
-        signalling_days = float(row.get("SignallingFitnessExpiryDate_days", 9999))
-        telecom_days = float(row.get("TelecomFitnessExpiryDate_days", 9999))
-        rolling_days = float(row.get("RollingStockFitnessExpiryDate_days", 9999))
-        any_expired = (signalling_days <= 0) or (telecom_days <= 0) or (rolling_days <= 0)
-        if int(action) == 0 and not any_expired:
-            reward += 20.0
-
-        # 2) jobcards
-        open_jobs = int(row.get("OpenJobCards", 0))
-        job_priority = float(row.get("JobCardPriority", 0.0))
-        if int(action) == 0:
-            reward -= 5.0 * float(open_jobs)
-            if open_jobs == 0:
-                reward += 15.0
-            elif open_jobs <= 2:
-                reward += 10.0
-        if int(action) == 2 and job_priority >= 10.0:
-            reward += 15.0
-
-        # 3) mileage
-        m_since = float(row.get("MileageSinceLastServiceKM", 0.0))
-        if int(action) == 0:
-            if m_since >= 10000.0:
-                reward -= 30.0
-            else:
-                reward += 10.0
-        else:
-            if int(action) == 2 and m_since >= 10000.0:
-                reward += 5.0
-
-        # 4) branding
-        brand_active = int(row.get("BrandingActive_flag", 0))
-        if brand_active == 1:
-            if int(action) == 0:
-                reward += 15.0
-            else:
-                reward -= 5.0
-
-        # 5) cleaning
-        cleaning_slot = int(row.get("CleaningSlotStatus", 0))
-        cleaning_required = int(row.get("CleaningRequired_flag", 0))
-        if cleaning_slot == 2:
-            if int(action) == 0:
-                reward -= 20.0
-            elif int(action) == 2:
-                reward += 10.0
-        elif cleaning_required == 1 and cleaning_slot == 0 and int(action) == 0:
-            reward += 10.0
-
-        # 6) stabling proxy
-        stabling_order = float(row.get("StablingSequenceOrder", 9999))
-        if int(action) == 0:
-            if stabling_order <= 3:
-                reward += 10.0
-            else:
-                reward -= 20.0
-
-        # shunting small penalty
-        shunts = float(row.get("ShuntingMovesRequired", 0.0))
-        reward -= 0.5 * shunts
-
-        # update per-day assigned actions
-        self.assigned_actions_day[cur_idx] = int(action)
-        if int(action) == 0:
-            self.remaining_service -= 1
-            self.total_shunting_cost += shunts
-
-        # advance to next train
-        self.step_idx += 1
-        terminated = False
-        truncated = False
-
-        # if day complete (all trains assigned) -> apply day transition
-        if self.step_idx >= self.n_trains:
-            # compute day-level bonuses/penalties
-            assigned_service = int((self.assigned_actions_day == 0).sum())
-            if assigned_service < self.service_quota:
-                reward += -50.0 * float(self.service_quota - assigned_service)
-            if assigned_service == self.service_quota:
-                reward += 50.0
-            # brand completion approx
-            if "BrandingActive_flag" in self.work_df.columns:
-                brand_total = max(1, int(self.work_df["BrandingActive_flag"].sum()))
-                brand_selected = int(((self.assigned_actions_day == 0) & (self.work_df["BrandingActive_flag"].astype(int).values == 1)).sum())
-                reward += 10.0 * safe_div(brand_selected, brand_total)
-
-            # log the day's assignments
-            day_log = self.work_df.copy()
-            day_log["AssignedAction"] = self.assigned_actions_day
-            day_log["DayIndex"] = self.day_index
-            fname = f"{self.log_dir}/assignments_day{self.day_index}.csv"
-            day_log.to_csv(fname, index=False)
-
-            # advance the world by one day
-            self._advance_one_day()
-
-            # append day_history and reset day variables for next day
-            self.assigned_actions_history.append(self.assigned_actions_day.copy())
-            # prepare for next day
-            self.day_index += 1
-            if self.day_index >= self.episode_days:
-                terminated = True
-                self.done = True
-            else:
-                # reset per-day trackers for new day
-                self.step_idx = 0
-                self.assigned_actions_day = np.full(self.n_trains, -1, dtype=np.int8)
-                self.remaining_service = self.service_quota
-                # recompute MOO surrogate scores for new day
-                self._compute_and_attach_moo_scores(self.work_df)
-
-        obs = self._get_obs() if not terminated else np.zeros(self.n_features + 3, dtype=np.float32)
-        return obs, float(reward), bool(terminated), bool(truncated), info
-
-    def _advance_one_day(self):
+# ---------------- Environment -------------------------
+if SB3_AVAILABLE:
+    class KMrlOneNightEnv(gym.Env):
         """
-        Apply the effects of today's assignments to work_df to produce next day's state.
-        - In_Service -> increase mileage, exposure, update last cleaned date if applicable
-        - Under_Maintenance -> reduce open jobcards
-        - Randomly create new jobcards (Poisson) to simulate wear
-        - Decrement fitness expiry days by 1
-        - Update CleaningSlotStatus, CleaningRequired_flag in a simple way
+        Gym environment: one episode = assign OperationalStatus for every train (sequentially).
         """
-        # for reproducibility use numpy random
-        for i in range(self.n_trains):
-            assignment = int(self.assigned_actions_day[i])
-            # update mileage
-            if assignment == 0:
-                # in service: add daily mileage
-                self.work_df.at[i, "TotalMileageKM"] = float(self.work_df.at[i, "TotalMileageKM"]) + self.daily_mileage_if_in_service
-                # mileage since last service increases
-                self.work_df.at[i, "MileageSinceLastServiceKM"] = float(self.work_df.at[i, "MileageSinceLastServiceKM"]) + self.daily_mileage_if_in_service
-                # exposure accrues if branded
-                if int(self.work_df.at[i, "BrandingActive_flag"]) == 1:
-                    self.work_df.at[i, "ExposureHoursAccrued"] = float(self.work_df.at[i, "ExposureHoursAccrued"]) + self.daily_exposure_hours
-                # cleaning: if slot free, consider cleaned and reset flag
-                if int(self.work_df.at[i, "CleaningSlotStatus"]) == 0:
-                    self.work_df.at[i, "CleaningRequired_flag"] = 0
-                    # last cleaned date -> reset days to large positive (we don't store actual dates here)
-                    self.work_df.at[i, "LastCleanedDate_days"] = 30
+        metadata = {"render_modes": []}
+        
+        def __init__(self, csv_path: str, config: Dict[str, Any] = None, seed: int = 42, normalize: bool = True):
+            super().__init__()
+            self.csv_path = csv_path
+            self.config = copy.deepcopy(DEFAULT_CONFIG)
+            if config is not None:
+                self.config.update(config)
+            self.seed_val = seed
+            self.rng = np.random.RandomState(seed)
+            
+            # Load CSV and preprocess
+            self.df_raw = pd.read_csv(csv_path, dtype=str).fillna("")
+            self.df_raw.columns = [c.strip() for c in self.df_raw.columns]
+            self.today = parse_date(self.df_raw.at[0, "CURRENT_DATE"]) if len(self.df_raw) > 0 and "CURRENT_DATE" in self.df_raw.columns else datetime.date.today()
+            self._preprocess()
+
+            # Feature list
+            self.feature_names = [
+                "Score", "Rank",
+                "RollingStockFitnessExpiry_days", "SignallingFitnessExpiry_days",
+                "OpenJobCards", "JobCardStatus_enc", "JobCardPriority",
+                "ExposureHoursAccrued", "ExposureHoursTarget",
+                "TotalMileageKM", "MileageSinceLastServiceKM", "BrakepadWear%", "HVACWear%"
+            ]
+            
+            for f in self.feature_names:
+                if f not in self.work_df.columns:
+                    self.work_df[f] = 0
+
+            # scaler
+            self.normalize = normalize
+            if self.normalize:
+                self._fit_scaler()
+
+            # action & observation space
+            self.action_space = spaces.Discrete(3)  # 0=in_service, 1=standby, 2=under_maintenance
+            obs_len = len(self.feature_names) + 3  # features + 3 extra
+            self.observation_space = spaces.Box(low=-10, high=10, shape=(obs_len,), dtype=np.float32)
+
+        def _preprocess(self):
+            df = self.df_raw.copy()
+            # numeric conversion
+            numeric_cols = [
+                "OpenJobCards", "ClosedJobCards", "ExposureHoursAccrued", "ExposureHoursTarget", "ExposureDailyQuota",
+                "TotalMileageKM", "MileageSinceLastServiceKM", "MileageBalanceVariance", "BrakepadWear%", "HVACWear%",
+                "CleaningSlotStatus", "BayPositionID", "ShuntingMovesRequired", "StablingSequenceOrder", "JobCardPriority",
+                "BrandingCompletionRatio", "MileageBalanceAbs", "CleaningPriority", "ShuntingPriority", "Score", "Rank"
+            ]
+            for c in numeric_cols:
+                if c in df.columns:
+                    df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0.0)
                 else:
-                    # if cleaning not free, maybe cleaning remains required
-                    pass
-            elif assignment == 2:
-                # maintenance day: reduce open jobcards
-                oj = int(self.work_df.at[i, "OpenJobCards"])
-                self.work_df.at[i, "OpenJobCards"] = max(0, oj - self.jobcard_reduction_if_maintenance)
-                # maintenance often resets mileage_since_last_service
-                self.work_df.at[i, "MileageSinceLastServiceKM"] = 0.0
-                # cleaning may be completed during maintenance
-                self.work_df.at[i, "CleaningRequired_flag"] = 0
+                    df[c] = 0.0
+
+            df["BrandingActive_flag"] = df.get("BrandingActive", "").astype(str).str.lower().apply(lambda x: 1 if x in ["1", "true", "y", "yes", "t"] else 0)
+            df["CleaningRequired_flag"] = df.get("CleaningRequired", "").astype(str).str.lower().apply(lambda x: 1 if x in ["1", "true", "y", "yes", "t"] else 0)
+            df["JobCardStatus_enc"] = df.get("JobCardStatus", "").astype(str).str.lower().apply(lambda x: 1 if "open" in str(x).lower() else 0)
+
+            # parse expiry dates into days until expiry
+            for col, out in [("RollingStockFitnessExpiryDate", "RollingStockFitnessExpiry_days"),
+                             ("SignallingFitnessExpiryDate", "SignallingFitnessExpiry_days"),
+                             ("TelecomFitnessExpiryDate", "TelecomFitnessExpiry_days")]:
+                if col in df.columns:
+                    parsed = df[col].apply(parse_date)
+                    df[out] = parsed.apply(lambda d: days_until(d, self.today) if d is not None else 0)
+                else:
+                    df[out] = 0
+
+            self.work_df = df.reset_index(drop=True)
+
+        def _fit_scaler(self):
+            mat = self.work_df[self.feature_names].astype(float).values
+            self.scaler = MinMaxScaler((-1, 1))  # Scale to [-1, 1] for better training
+            self.scaler.fit(mat)
+
+        def reset(self, seed=None, options=None):
+            """Reset environment - returns (observation, info) tuple"""
+            if seed is not None:
+                self.rng = np.random.RandomState(seed)
+            
+            self._build_workcopy()
+            self.step_idx = 0
+            self.assigned = np.full(self.n_trains, -1, dtype=int)
+            self.remaining_service = int(self.config["service_quota"])
+            self.total_shunting_cost = 0.0
+            self.jobcard_age = np.zeros(self.n_trains, dtype=int)
+            self.today_sim = self.today
+            
+            obs = self._get_obs()
+            info = {}
+            return obs, info
+
+        def _build_workcopy(self):
+            self.df = self.work_df.copy().reset_index(drop=True)
+            self.n_trains = len(self.df)
+
+        def _get_obs(self):
+            if self.step_idx >= self.n_trains:
+                return np.zeros(self.observation_space.shape, dtype=np.float32)
+                
+            idx = self.step_idx
+            feat = self.df.loc[idx, self.feature_names].astype(float).values
+            if self.normalize:
+                feat = self.scaler.transform(feat.reshape(1, -1)).reshape(-1,)
+            
+            # Additional context features
+            rem = np.array([self.remaining_service / max(1, int(self.config["service_quota"]))], dtype=np.float32)
+            sh = np.array([min(self.total_shunting_cost / 100.0, 1.0)], dtype=np.float32)  # Normalize shunting
+            frac = np.array([self.step_idx / max(1, self.n_trains)], dtype=np.float32)
+            
+            return np.concatenate([feat.astype(np.float32), rem, sh, frac])
+
+        def step(self, action):
+            """Execute action and return (obs, reward, terminated, truncated, info)"""
+            assert self.action_space.contains(action)
+            
+            if self.step_idx >= self.n_trains:
+                # Episode already done
+                obs = np.zeros(self.observation_space.shape, dtype=np.float32)
+                return obs, 0.0, True, False, {}
+            
+            idx = self.step_idx
+            row = self.df.loc[idx]
+            info = {"train_idx": idx, "TrainID": row.get("TrainID", "")}
+            reward = 0.0
+            breakdown = {}
+
+            chosen = int(action)
+            
+            # Check fitness constraints
+            fitness_expired = any([
+                float(row.get("RollingStockFitnessExpiry_days", 0)) <= 0,
+                float(row.get("SignallingFitnessExpiry_days", 0)) <= 0,
+                float(row.get("TelecomFitnessExpiry_days", 0)) <= 0
+            ])
+            
+            # Override if trying to put expired fitness train in service
+            if chosen == 0 and fitness_expired:
+                chosen = 1  # Force to standby
+                reward += self.config["rw"]["fit_violation"]
+                breakdown["fit_violation"] = self.config["rw"]["fit_violation"]
+                info["override"] = "fitness_expired"
+
+            # Check quota constraint
+            if chosen == 0 and self.remaining_service <= 0:
+                chosen = 1  # Force to standby
+                reward += self.config["rw"]["quota_miss"] * 0.5
+                breakdown["quota_overflow_penalty"] = self.config["rw"]["quota_miss"] * 0.5
+                info["override"] = info.get("override", "") + ";quota_exhausted"
+
+            # === REWARD SHAPING ===
+            
+            # Fitness safety bonus
+            if chosen == 0 and not fitness_expired:
+                reward += self.config["rw"]["fit_safe"]
+                breakdown["fit_safe"] = self.config["rw"]["fit_safe"]
+
+            # Jobcards handling
+            open_jobs = int(row.get("OpenJobCards", 0))
+            brake_wear = float(row.get("BrakepadWear%", 0))
+            hvac_wear = float(row.get("HVACWear%", 0))
+            
+            if chosen == 0:  # In service
+                # Penalty for running with open jobs
+                if open_jobs > 0:
+                    penalty = self.config["rw"]["inservice_jobcard_penalty_per_job"] * open_jobs
+                    reward += penalty
+                    breakdown["inservice_jobcard_penalty"] = penalty
+                else:
+                    # Bonus for clean train in service
+                    reward += 3.0
+                    breakdown["no_open_job_bonus"] = 3.0
+                    
+            elif chosen == 2:  # Under maintenance
+                # Reward maintenance when actually needed
+                needs_maintenance = (open_jobs >= 2 or 
+                                    brake_wear >= self.config["brake_threshold"] or 
+                                    hvac_wear >= self.config["hvac_threshold"])
+                if needs_maintenance:
+                    reward += self.config["rw"]["maintenance_when_needed"]
+                    breakdown["maint_when_needed"] = self.config["rw"]["maintenance_when_needed"]
+                else:
+                    # Small penalty for unnecessary maintenance
+                    reward -= 5.0
+                    breakdown["unnecessary_maint"] = -5.0
+                    
+            elif chosen == 1:  # Standby
+                # Small penalty for standby to encourage using trains
+                if not fitness_expired and open_jobs < 2:
+                    reward += self.config["rw"]["standby_penalty"]
+                    breakdown["standby_penalty"] = self.config["rw"]["standby_penalty"]
+
+            # Mileage considerations
+            m_since = float(row.get("MileageSinceLastServiceKM", 0.0))
+            if chosen == 0:
+                if m_since >= float(self.config["mileage_service_threshold"]):
+                    reward -= 15.0
+                    breakdown["mileage_over_threshold"] = -15.0
+                else:
+                    reward += 2.0
+                    breakdown["mileage_ok"] = 2.0
+
+            # Branding
+            if int(row.get("BrandingActive_flag", 0)) == 1:
+                if chosen == 0:
+                    reward += 8.0
+                    breakdown["brand_selected"] = 8.0
+                else:
+                    reward -= 3.0
+                    breakdown["brand_missed"] = -3.0
+
+            # Cleaning
+            cleaning_slot = int(row.get("CleaningSlotStatus", 0))
+            cleaning_required = int(row.get("CleaningRequired_flag", 0))
+            if cleaning_slot == 2 and chosen == 0:
+                reward -= 10.0
+                breakdown["clean_inprogress_penalty"] = -10.0
+            elif cleaning_required == 1 and chosen != 2:
+                reward -= 2.0
+                breakdown["cleaning_needed_penalty"] = -2.0
+
+            # Shunting penalty
+            shunts = float(row.get("ShuntingMovesRequired", 0.0))
+            if chosen == 0 and shunts > 0:
+                penalty = self.config["rw"]["shunt_penalty_per_move"] * shunts
+                reward += penalty
+                breakdown["shunt_penalty"] = penalty
+
+            # Commit action
+            self.assigned[idx] = chosen
+            if chosen == 0:
+                self.remaining_service -= 1
+                self.total_shunting_cost += shunts
+
+            self.step_idx += 1
+            
+            # Check if episode is done
+            terminated = (self.step_idx >= self.n_trains)
+            truncated = False
+
+            if terminated:
+                # End of episode rewards
+                service_selected = int((self.assigned == 0).sum())
+                
+                # Quota achievement
+                if service_selected < int(self.config["service_quota"]):
+                    miss = int(self.config["service_quota"]) - service_selected
+                    penalty = self.config["rw"]["quota_miss"] * miss
+                    reward += penalty
+                    breakdown["quota_miss_penalty"] = penalty
+                elif service_selected == int(self.config["service_quota"]):
+                    reward += self.config["rw"]["quota_hit"]
+                    breakdown["quota_hit"] = self.config["rw"]["quota_hit"]
+                else:
+                    # Over quota
+                    over = service_selected - int(self.config["service_quota"])
+                    penalty = -10.0 * over
+                    reward += penalty
+                    breakdown["quota_over_penalty"] = penalty
+
+                # Simulate next day for additional rewards
+                sim_out = self._simulate_next_day()
+                for k, v in sim_out.get("rewards", {}).items():
+                    reward += v
+                    breakdown[k] = breakdown.get(k, 0.0) + v
+
+                # Log for debugging
+                if self.step_idx % 100 == 0:  # Log occasionally
+                    out_df = self._build_output_df()
+                    out_df["AssignedAction"] = self.assigned
+                    out_df["AssignedAction_str"] = out_df["AssignedAction"].map({
+                        0: "in_service", 1: "standby", 2: "under_maintenance"
+                    })
+                    os.makedirs("./kmrl_logs", exist_ok=True)
+                    out_df.to_csv(f"./kmrl_logs/train_episode_{self.rng.randint(10000)}.csv", index=False)
+
+            obs = self._get_obs()
+            info["breakdown"] = breakdown
+            
+            return obs, float(reward), terminated, truncated, info
+
+        def _simulate_next_day(self):
+            """Simulate next day operations"""
+            cfg = self.config
+            rw = cfg["rw"]
+            rewards = {}
+            
+            # Count action distribution for balance reward
+            n_service = (self.assigned == 0).sum()
+            n_standby = (self.assigned == 1).sum()
+            n_maint = (self.assigned == 2).sum()
+            
+            # Encourage balanced distribution
+            if n_standby > self.n_trains * 0.5:
+                rewards["too_many_standby"] = -20.0
+            
+            # Simulate maintenance effects
+            for i in range(self.n_trains):
+                if self.assigned[i] == 2:  # maintenance
+                    # Reduce jobcards
+                    oc = int(self.df.at[i, "OpenJobCards"])
+                    if oc > 0:
+                        rewards[f"maint_jobcard_{i}"] = 5.0
+            
+            return {"rewards": rewards}
+
+        def _build_output_df(self):
+            return self.df.copy()
+
+        def render(self, mode="human"):
+            print(f"Step {self.step_idx}/{self.n_trains}. Remaining service: {self.remaining_service}")
+
+else:
+    KMrlOneNightEnv = None
+
+# ------------------ Training & Inference Utilities ------------------
+
+def train_ppo(csv_path: str, model_out: str = "kmrl_ppo.zip", timesteps: int = 100000, seed: int = 42):
+    """Train PPO model with proper configuration"""
+    if not SB3_AVAILABLE:
+        raise RuntimeError("stable-baselines3 not installed")
+    
+    print("Creating environment...")
+    # Create vectorized environment
+    env = DummyVecEnv([lambda: KMrlOneNightEnv(csv_path, seed=seed)])
+    
+    print("Initializing PPO model...")
+    # PPO with tuned hyperparameters for this environment
+    model = PPO(
+        "MlpPolicy",
+        env,
+        learning_rate=3e-4,
+        n_steps=512,  # Reduced for faster updates
+        batch_size=64,
+        n_epochs=10,
+        gamma=0.95,  # Slightly lower discount for immediate rewards
+        gae_lambda=0.9,
+        clip_range=0.2,
+        ent_coef=0.01,  # Encourage exploration
+        vf_coef=0.5,
+        max_grad_norm=0.5,
+        policy_kwargs=dict(
+            net_arch=[dict(pi=[128, 128], vf=[128, 128])]  # Deeper networks
+        ),
+        verbose=1,
+        seed=seed
+    )
+    
+    print(f"Training for {timesteps} timesteps...")
+    
+    # Training with periodic evaluation
+    eval_env = DummyVecEnv([lambda: KMrlOneNightEnv(csv_path, seed=seed+1)])
+    
+    # Callbacks for better training monitoring
+    eval_callback = EvalCallback(
+        eval_env,
+        best_model_save_path="./kmrl_models/",
+        log_path="./kmrl_logs/",
+        eval_freq=5000,
+        deterministic=True,
+        render=False,
+        n_eval_episodes=5
+    )
+    
+    checkpoint_callback = CheckpointCallback(
+        save_freq=10000,
+        save_path="./kmrl_checkpoints/",
+        name_prefix="kmrl_model"
+    )
+    
+    # Train the model
+    model.learn(
+        total_timesteps=timesteps,
+        callback=[eval_callback, checkpoint_callback],
+        progress_bar=True
+    )
+    
+    # Save final model
+    model.save(model_out)
+    print(f"Model saved to {model_out}")
+    
+    # Test the model
+    print("\nTesting trained model...")
+    test_env = KMrlOneNightEnv(csv_path, seed=seed+100)
+    obs, _ = test_env.reset()
+    
+    action_counts = {0: 0, 1: 0, 2: 0}
+    for _ in range(test_env.n_trains):
+        action, _ = model.predict(obs, deterministic=True)
+        obs, reward, terminated, truncated, info = test_env.step(action)
+        action_counts[int(action)] += 1
+        if terminated:
+            break
+    
+    print(f"Action distribution: in_service={action_counts[0]}, standby={action_counts[1]}, maintenance={action_counts[2]}")
+    
+    return model_out
+
+def infer_policy(csv_path: str, model_path: str = None, out_csv: str = "next_day_plan_rl.csv", heuristic_fallback: bool = True):
+    """Run inference with trained model or heuristic"""
+    df = pd.read_csv(csv_path, dtype=str).fillna("")
+    df.columns = [c.strip() for c in df.columns]
+    # Numeric conversion
+    numeric_cols = [
+        "OpenJobCards", "ClosedJobCards", "ExposureHoursAccrued", "ExposureHoursTarget",
+        "TotalMileageKM", "MileageSinceLastServiceKM", "BrakepadWear%", "HVACWear%",
+        "CleaningSlotStatus", "ShuntingMovesRequired", "JobCardPriority",
+        "Score", "Rank"
+    ]
+    for c in numeric_cols:
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0.0)
+
+    # Parse dates and flags
+    df["BrandingActive_flag"] = df.get("BrandingActive", "").astype(str).str.lower().apply(
+        lambda x: 1 if x in ["1", "true", "y", "yes", "t"] else 0
+    )
+    df["CleaningRequired_flag"] = df.get("CleaningRequired", "").astype(str).str.lower().apply(
+        lambda x: 1 if x in ["1", "true", "y", "yes", "t"] else 0
+    )
+    
+    def _days_until_col(col):
+        if col not in df.columns:
+            return np.zeros(len(df), dtype=int)
+        parsed = df[col].apply(parse_date)
+        base = parse_date(df.at[0, "CURRENT_DATE"]) if "CURRENT_DATE" in df.columns else datetime.date.today()
+        return parsed.apply(lambda d: days_until(d, base) if d is not None else 0)
+
+    df["RollingStockFitnessExpiry_days"] = _days_until_col("RollingStockFitnessExpiryDate")
+    df["SignallingFitnessExpiry_days"] = _days_until_col("SignallingFitnessExpiryDate")
+    df["TelecomFitnessExpiry_days"] = _days_until_col("TelecomFitnessExpiryDate")
+
+    # Use RL model if available
+    if model_path and SB3_AVAILABLE and os.path.exists(model_path):
+        print(f"Using trained model from {model_path}")
+        model = PPO.load(model_path)
+        env = KMrlOneNightEnv(csv_path)
+        obs, _ = env.reset()
+        
+        actions = []
+        for i in range(env.n_trains):
+            action, _ = model.predict(obs, deterministic=True)
+            actions.append(int(action))
+            obs, reward, terminated, truncated, info = env.step(action)
+            if terminated:
+                break
+        
+        status_map = {0: "in_service", 1: "standby", 2: "under_maintenance"}
+        df["NextDayOperationalStatus"] = [status_map[a] for a in actions]
+        
+        # Add XAI explanations
+        explanations = []
+        for i, action in enumerate(actions):
+            row = df.iloc[i]
+            reasons = []
+            if action == 0:
+                reasons.append(f"Score={row['Score']:.1f}")
+                if row["BrandingActive_flag"] == 1:
+                    reasons.append("branding_active")
+            elif action == 1:
+                if row["OpenJobCards"] > 0:
+                    reasons.append(f"jobs={int(row['OpenJobCards'])}")
+            else:  # maintenance
+                if row["OpenJobCards"] >= 2:
+                    reasons.append(f"high_jobs={int(row['OpenJobCards'])}")
+                if row["BrakepadWear%"] >= DEFAULT_CONFIG["brake_threshold"]:
+                    reasons.append("brake_wear_high")
+            explanations.append(", ".join(reasons) if reasons else "balanced_decision")
+        
+        df["ReasonForStatus"] = explanations
+        
+    else:
+        # Heuristic fallback
+        print("Using heuristic fallback")
+        df["eligible"] = (
+            (df["RollingStockFitnessExpiry_days"] > 0) & 
+            (df["SignallingFitnessExpiry_days"] > 0) & 
+            (df["TelecomFitnessExpiry_days"] > 0)
+        ).astype(int)
+        
+        # Priority scoring
+        df["RL priority"] = (
+            df["Score"] * 1.0 + 
+            df["eligible"] * 100.0 - 
+            df["OpenJobCards"] * 5.0 - 
+            df["ShuntingMovesRequired"] * 2.0 + 
+            df["BrandingActive_flag"] * 10.0
+        )
+        
+        df_sorted = df.sort_values(["eligible", "RL priority"], ascending=[False, False]).reset_index()
+        
+        assignments = []
+        remaining_quota = int(DEFAULT_CONFIG["service_quota"])
+        
+        for idx, row in df_sorted.iterrows():
+            orig_idx = int(row["index"])
+            
+            # Check constraints
+            if row["eligible"] == 0:
+                assignments.append((orig_idx, "standby", "fitness_expired"))
+            elif row["BrakepadWear%"] >= DEFAULT_CONFIG["brake_threshold"]:
+                assignments.append((orig_idx, "under_maintenance", "brake_maintenance"))
+            elif row["HVACWear%"] >= DEFAULT_CONFIG["hvac_threshold"]:
+                assignments.append((orig_idx, "under_maintenance", "hvac_maintenance"))
+            elif row["OpenJobCards"] >= 3:
+                assignments.append((orig_idx, "under_maintenance", "high_jobcards"))
+            elif remaining_quota > 0:
+                assignments.append((orig_idx, "in_service", "selected"))
+                remaining_quota -= 1
             else:
-                # Standby: small increase in jobcards probability
-                pass
+                assignments.append((orig_idx, "standby", "quota_exhausted"))
+        
+        # Sort back to original order
+        assignments.sort(key=lambda x: x[0])
+        df["NextDayOperationalStatus"] = [a[1] for a in assignments]
+        df["ReasonForStatus"] = [a[2] for a in assignments]
+    
+    df["OperationalStatus"] = df["NextDayOperationalStatus"]
+    df = df.drop(columns=["NextDayOperationalStatus"])
+# Ensure XAI_explanation exists
+    if "ReasonForStatus" not in df.columns:
+        df["ReasonForStatus"] = ""
 
-            # random new jobcards (Poisson with small lambda)
-            if np.random.rand() < self.jobcard_new_per_day_lambda:
-                self.work_df.at[i, "OpenJobCards"] = int(self.work_df.at[i, "OpenJobCards"]) + 1
+    # Save **all** columns with added/updated columns
+    df.to_csv(out_csv, index=False)
+    print(f"Saved assignments to {out_csv}")
+    return out_csv
 
-            # decrement days to expiry for fitness certificates
-            for col in ["SignallingFitnessExpiryDate_days", "TelecomFitnessExpiryDate_days", "RollingStockFitnessExpiryDate_days"]:
-                if col in self.work_df.columns:
-                    v = float(self.work_df.at[i, col])
-                    self.work_df.at[i, col] = v - 1.0
-
-        # recompute mileage variance/abs after updates (proxy)
-        # simple recomputation: MileageBalanceVariance = var(TotalMileageKM)
-        if "TotalMileageKM" in self.work_df.columns:
-            try:
-                var = float(self.work_df["TotalMileageKM"].astype(float).var())
-                # set the same variance value for all rows (used by reward proxies)
-                self.work_df["MileageBalanceVariance"] = var
-                # compute simple abs diff to mean for each train
-                mean_m = float(self.work_df["TotalMileageKM"].astype(float).mean())
-                self.work_df["MileageBalanceAbs"] = (self.work_df["TotalMileageKM"].astype(float) - mean_m).abs()
-            except Exception:
-                pass
-
-        # simple cleaning slot dynamics: free slots rotate randomly (this is arbitrary - replace with real schedule)
-        for i in range(self.n_trains):
-            if int(self.work_df.at[i, "CleaningSlotStatus"]) == 1:
-                # assigned -> becomes in_progress next day with prob 0.7
-                if np.random.rand() < 0.7:
-                    self.work_df.at[i, "CleaningSlotStatus"] = 2
-            elif int(self.work_df.at[i, "CleaningSlotStatus"]) == 2:
-                # in_progress -> free next day with prob 0.8
-                if np.random.rand() < 0.8:
-                    self.work_df.at[i, "CleaningSlotStatus"] = 0
-
-        # recompute any other derived fields if required
-
-    def render(self, mode="human"):
-        if self.done:
-            print(f"Episode finished after {self.day_index} days. Assignment history:")
-            for d, arr in enumerate(self.assigned_actions_history):
-                labels = ["In_Service" if a==0 else ("Standby" if a==1 else "Under_Maintenance") for a in arr]
-                print(f"Day {d}: {labels}")
-        else:
-            print(f"Day {self.day_index} step {self.step_idx}/{self.n_trains}. Remaining service: {self.remaining_service}")
-
-
-# --- quick training usage example ---
+# ---------------------- CLI ---------------------------
 if __name__ == "__main__":
-    CSV_PATH = r"D:\User\Desktop\GT\VSC\KMRL\mono-repo\apps\AIML\final1output.csv"
-    env = TrainSchedulingEnvMultiDay(CSV_PATH,
-                                    service_quota=13,
-                                    episode_days=7,
-                                    daily_mileage_if_in_service=400.0,
-                                    daily_exposure_hours=16.0,
-                                    jobcard_reduction_if_maintenance=2,
-                                    jobcard_new_per_day_lambda=0.05,
-                                    today=None)
-    env.reset(seed=SEED)
-    venv = DummyVecEnv([lambda: env])
-    model = PPO("MlpPolicy", venv, verbose=1, tensorboard_log="./kmrl_tb_multiday/")
-    model.learn(total_timesteps=100000)  # increase as needed
-    model.save("kmrl_multiday_ppo")
-    obs, _ = env.reset()
-    total_r = 0.0
-    terminated = False
-    while not terminated:
-        action, _ = model.predict(obs, deterministic=False)
-        obs, r, terminated, truncated, info = env.step(int(action))
-        total_r += r
-    print("Episode reward:", total_r)
-    env.render()
-    next_day_assignments = env.assigned_actions_day  # already 1D array with all trains
-    action_map = {
-        0: "In_Service",
-        1: "Standby",
-        2: "Under_Maintenance"
-    }
-    next_day_assignments_str = [action_map[int(a)] for a in next_day_assignments]
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", choices=["train", "infer"], required=True)
+    parser.add_argument("--csv", required=True, help="Path to MOO CSV (today)")
+    parser.add_argument("--model", help="Path to saved model for inference (optional)")
+    parser.add_argument("--out", default="next_day_plan_rl.csv", help="Output CSV path")
+    parser.add_argument("--timesteps", type=int, default=10000, help="Timesteps for quick training")
+    parser.add_argument("--seed", type=int, default=42)
+    args = parser.parse_args()
+    if args.mode == "train":
+        if not SB3_AVAILABLE:
+            raise RuntimeError("stable-baselines3 or gym not installed in this Python environment. Install first.")
+        model_path = args.model if args.model else "kmrl_ppo_model.zip"
+        print(f"Training PPO on {args.csv} for {args.timesteps} timesteps...")
+        train_ppo(args.csv, model_out=model_path, timesteps=args.timesteps, seed=args.seed)
+        print("Training finished. Run inference with --mode infer --model <model_path>")
 
-    import pandas as pd
-    df = pd.read_csv(CSV_PATH)  # your input file
-
-    df["OperationalStatus"] = next_day_assignments_str
-    df.to_csv("next_day_output.csv", index=False)
-
-    print("✅ Next day schedule saved to next_day_output.csv")
+    elif args.mode == "infer":
+        infer_policy(args.csv, model_path=args.model, out_csv=args.out)
