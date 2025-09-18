@@ -104,7 +104,7 @@ export default function Dashboard() {
 
   // Top recommendations (highest priority scores)
   const topRecommendations = trainsets
-    .filter((t) => t.operations?.operationalStatus === "In_Service")
+    .filter((t) => t.operations?.operationalStatus === "in_service")
     .sort((a, b) => b.priority_score - a.priority_score)
     .slice(0, 3)
     .map((trainset) => ({
