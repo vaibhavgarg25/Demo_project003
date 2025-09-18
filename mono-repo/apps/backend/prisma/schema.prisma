@@ -126,8 +126,10 @@ model Stabling {
 model Operations {
   id                Int                @id @default(autoincrement())
   operationalStatus OperationalStatusEnum
-  reasonForStatus  String?
-
+  reasonForStatus   String?
+  rank              Int?
+  score             Int?
+  rl_priority       Int?
   train     Train   @relation(fields: [trainId], references: [trainID])
   trainId   String     @unique
 }

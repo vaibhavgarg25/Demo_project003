@@ -220,7 +220,6 @@ export default function CSVTemplatePage() {
       }
 
       const result = await response.json()
-      console.log("Upload successful:", result)
       setUploadSuccess(true)
 
       // Reset form after successful upload
