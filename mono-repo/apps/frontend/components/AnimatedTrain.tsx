@@ -1,205 +1,324 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
+import React, { useEffect, useRef, useState } from "react";
 
-export function AnimatedTrain() {
-  const [reducedMotion, setReducedMotion] = useState(false)
+/**
+ * SmoothBWTrainV3
+ *
+ * - rAF-driven wheel/rod animation for smoothness & synchronization
+ * - CSS-driven bob + shadow for cheap, smooth overall motion
+ * - Respects prefers-reduced-motion and visibilitychange
+ */
+type SmoothBWTrainV3Props = {
+  animate?: boolean;
+  speed?: number; // 1 = normal, >1 faster
+  className?: string;
+  ariaLabel?: string;
+};
 
+export function SmoothBWTrain({
+  animate = true,
+  speed = 1,
+  className = "",
+  ariaLabel = "Black and white steam locomotive",
+}: SmoothBWTrainV3Props) {
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const lastTimeRef = useRef<number | null>(null);
+  const [reduced, setReduced] = useState<boolean>(() =>
+    typeof window !== "undefined" ? !!window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches : false
+  );
+  const [isPlaying, setIsPlaying] = useState<boolean>(animate && !reduced);
+
+  // clamp speed
+  const safeSpeed = Math.max(0.25, Math.min(speed, 4));
+
+  // Listen for prefers-reduced-motion changes
   useEffect(() => {
-    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)")
-    setReducedMotion(mediaQuery.matches)
+    const mq = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+    if (!mq) return;
+    const handler = (e: MediaQueryListEvent | MediaQueryList) => setReduced(Boolean((e as any).matches));
+    if (typeof mq.addEventListener === "function") mq.addEventListener("change", handler as any);
+    else mq.addListener(handler as any);
+    setReduced(Boolean(mq.matches));
+    return () => {
+      if (typeof mq.removeEventListener === "function") mq.removeEventListener("change", handler as any);
+      else mq.removeListener(handler as any);
+    };
+  }, []);
 
-    const handleChange = (e: MediaQueryListEvent) => {
-      setReducedMotion(e.matches)
+  // Pause when tab hidden
+  useEffect(() => {
+    function onVis() {
+      if (document.hidden) {
+        setIsPlaying(false);
+      } else {
+        setIsPlaying(animate && !reduced);
+      }
+    }
+    document.addEventListener("visibilitychange", onVis, false);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [animate, reduced]);
+
+  // reflect animate/reduced
+  useEffect(() => {
+    setIsPlaying(animate && !reduced);
+  }, [animate, reduced]);
+
+  // rAF loop driving wheel & rod transforms
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+
+    // select wheel groups and rod groups by data attributes
+    const wheelNodes = Array.from(svg.querySelectorAll<SVGGElement>("[data-wheel]"));
+    const rodNodes = Array.from(svg.querySelectorAll<SVGGElement>("[data-rod]"));
+
+    // If reduced motion is requested, ensure no rAF runs and set static transforms
+    if (reduced || !isPlaying) {
+      // optionally reset transforms
+      wheelNodes.forEach((w) => {
+        w.style.transform = "rotate(0deg)";
+        // ensure transform-origin set
+        w.style.transformOrigin = "center";
+        // ask browser to use GPU composite
+        w.style.willChange = "transform";
+      });
+      rodNodes.forEach((r) => {
+        r.style.transform = "rotate(0deg)";
+        r.style.transformOrigin = "center";
+        r.style.willChange = "transform";
+      });
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      lastTimeRef.current = null;
+      return;
     }
 
-    mediaQuery.addEventListener("change", handleChange)
-    return () => mediaQuery.removeEventListener("change", handleChange)
-  }, [])
+    const baseWheelDuration = 1000 * 0.9; // ms for one full rotation at speed=1 (0.9s)
+    const period = baseWheelDuration / safeSpeed;
+
+    // Each rod will have a small phase offset so they don't all line up perfectly
+    const rodPhaseOffsets = rodNodes.map((_, i) => (i * 0.18 * Math.PI)); // radians
+
+    const onFrame = (t: number) => {
+      if (lastTimeRef.current == null) lastTimeRef.current = t;
+      const elapsed = t; // use absolute time base for smoothness
+
+      // angle in degrees: 360 * (elapsed / period) % 360
+      const angle = ((elapsed % period) / period) * 360; // degrees
+
+      // apply smooth rotation to wheels, with subtle per-wheel speed tweaks for realism
+      wheelNodes.forEach((w, i) => {
+        // small jitter/phase for realism
+        const phaseDeg = i * 6; // degrees offset per wheel
+        // Slight per-wheel speed offset (very small)
+        const wheelAngle = angle * (1 + (i - 1) * 0.002) + phaseDeg;
+        // set transform using rotate + translate3d hint
+        w.style.transform = `rotate(${wheelAngle}deg) translate3d(0,0,0)`;
+        w.style.transformOrigin = "center";
+        w.style.willChange = "transform";
+      });
+
+      // rods oscillate / rotate with phase offset relative to wheel rotation
+      rodNodes.forEach((r, i) => {
+        // Convert phase offset to degrees
+        const phaseDeg = (rodPhaseOffsets[i] * 180) / Math.PI;
+        const rodAngle = angle + 90 + phaseDeg; // +90 to visually align rods better
+        r.style.transform = `rotate(${rodAngle}deg) translate3d(0,0,0)`;
+        r.style.transformOrigin = "center";
+        r.style.willChange = "transform";
+      });
+
+      rafRef.current = requestAnimationFrame(onFrame);
+    };
+
+    rafRef.current = requestAnimationFrame(onFrame);
+
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+      lastTimeRef.current = null;
+    };
+  }, [isPlaying, reduced, safeSpeed, svgRef.current]);
+
+  const toggle = () => {
+    if (reduced) {
+      setIsPlaying(false);
+      return;
+    }
+    setIsPlaying((s) => !s);
+  };
+
+  // style var used by CSS for bob/shadow durations
+  const wrapperStyle: React.CSSProperties = {
+    ["--train-speed" as any]: String(safeSpeed),
+  };
 
   return (
-    <div
-      className="flex items-center justify-center p-8"
-      role="img"
-      aria-label="Animated Kochi Metro train illustration"
-      style={{ color: "var(--foreground)" }} // sets currentColor inside SVG for light mode; theme will override
-    >
-      {/* Inline styles so this component is self-contained */}
+    <div className={`smooth-bw-train-v3-root ${className}`} style={wrapperStyle}>
       <style>{`
-        /* container classes */
-        .train-wrap { display: inline-block; width: 100%; max-width: 360px; }
-        .train-scene { width: 100%; height: auto; display: block; }
+        .smooth-bw-train-v3-root { display:flex; flex-direction:column; align-items:center; gap:12px; padding:8px; }
+        .sbt3-svg { width:100%; max-width:760px; height:auto; display:block; }
+        .sbt3-svg * { shape-rendering: geometricPrecision; vector-effect: non-scaling-stroke; }
 
-        /* motion - respects reduced motion via media query */
-        @keyframes train-bob {
-          0% { transform: translateY(0) translateX(0); }
-          50% { transform: translateY(-6px) translateX(2px); }
-          100% { transform: translateY(0) translateX(0); }
+        /* CSS bob + shadow (cheap, smooth) */
+        :root { --base-bob: 3.6s; --base-shadow: 3.6s; }
+        .smooth-bw-train-v3-root { --train-speed: var(--train-speed, 1); }
+        .sbt3-train-bob { will-change: transform; }
+        .playing .sbt3-train-bob {
+          animation: sbt3-bob calc(var(--base-bob) / var(--train-speed)) cubic-bezier(.22,.9,.32,1) infinite;
         }
-        @keyframes wheel-rotate {
-          to { transform: rotate(360deg); }
-        }
-        @keyframes shadow-scale {
-          0% { transform: scaleX(0.98) scaleY(1); opacity: 0.08; }
-          50% { transform: scaleX(1.02) scaleY(1.05); opacity: 0.12; }
-          100% { transform: scaleX(0.98) scaleY(1); opacity: 0.08; }
+        @keyframes sbt3-bob {
+          0% { transform: translate3d(0,0,0); }
+          50% { transform: translate3d(2px,-6px,0); }
+          100% { transform: translate3d(0,0,0); }
         }
 
-        .animate-train { animation: train-bob 3.2s ease-in-out infinite; will-change: transform; }
-        .animate-wheel { 
-          animation: wheel-rotate 0.8s linear infinite;
-          transform-box: fill-box;
-          transform-origin: center;
-          will-change: transform;
+        .sbt3-shadow { will-change: transform, opacity; }
+        .playing .sbt3-shadow {
+          animation: sbt3-shadow calc(var(--base-shadow) / var(--train-speed)) ease-in-out infinite;
         }
-        .animate-shadow { animation: shadow-scale 3.2s ease-in-out infinite; transform-origin: center; will-change: transform, opacity; }
+        @keyframes sbt3-shadow {
+          0% { transform: scaleX(0.985) scaleY(1); opacity:0.06; }
+          50% { transform: scaleX(1.02) scaleY(1.04); opacity:0.14; }
+          100% { transform: scaleX(0.985) scaleY(1); opacity:0.06; }
+        }
 
-        /* Visual tuning: use CSS variables for stroke/fill where possible */
-        .train-window { fill: white; opacity: 0.92; stroke: rgba(0,0,0,0.06); stroke-width: 0.6; }
-        .train-door { fill: currentColor; opacity: 0.12; }
-        .train-accent { fill: var(--accent); }
-        .train-accent-dark { fill: var(--primary); }
-        .train-body-stroke { stroke: rgba(0,0,0,0.06); stroke-width: 0.6; }
+        /* control styles */
+        .sbt3-controls { display:flex; gap:10px; align-items:center; }
+        .sbt3-btn {
+          padding:8px 14px; border-radius:10px; background:#fff; color:#000; border:2px solid #000;
+          font-weight:700; cursor:pointer;
+        }
+        .sbt3-btn[disabled] { opacity:.45; cursor:not-allowed; }
 
-        /* Respect prefers-reduced-motion at CSS level too */
         @media (prefers-reduced-motion: reduce) {
-          .animate-train, .animate-wheel, .animate-shadow { animation: none !important; }
+          .playing .sbt3-train-bob,
+          .playing .sbt3-shadow { animation: none !important; }
         }
-
-        /* Make sure the tiny text for KM in svg remains legible */
-        .metro-label { font-family: "Chirp", -apple-system, "Segoe UI", Roboto, sans-serif; font-size: 8px; font-weight: 700; fill: white; opacity: 0.95; }
       `}</style>
 
-      <div className={`train-wrap ${!reducedMotion ? "animate-train" : ""}`}>
+      <div className={`sbt3-wrap ${isPlaying && !reduced ? "playing" : "paused"}`} aria-label={ariaLabel} role="img">
         <svg
-          className="train-scene"
-          viewBox="0 0 360 140"
-          role="presentation"
-          focusable="false"
-          aria-hidden="true"
+          ref={svgRef}
+          className="sbt3-svg"
+          viewBox="0 0 900 280"
           xmlns="http://www.w3.org/2000/svg"
+          preserveAspectRatio="xMidYMid meet"
+          aria-hidden="true"
         >
-          {/* defs for gradients */}
           <defs>
-            <linearGradient id="bodyGrad" x1="0" x2="1" y1="0" y2="0">
-              {/* uses tokens so theme switches colors */}
-              <stop offset="0%" stopColor="var(--accent)" stopOpacity="1" />
-              <stop offset="100%" stopColor="var(--primary)" stopOpacity="1" />
-            </linearGradient>
-
-            <linearGradient id="windowGrad" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="rgba(255,255,255,0.98)" />
-              <stop offset="100%" stopColor="rgba(255,255,255,0.85)" />
-            </linearGradient>
-
-            <filter id="softShadow" x="-50%" y="-50%" width="200%" height="200%">
-              <feDropShadow dx="0" dy="6" stdDeviation="8" floodColor="#000" floodOpacity="0.18" />
-            </filter>
+            <clipPath id="cabClip3"><rect x="682" y="26" width="196" height="152" rx="8" /></clipPath>
           </defs>
 
-          {/* ground shadow */}
-          <g id="shadow" transform="translate(0,78)">
-            <ellipse
-              cx="180"
-              cy="28"
-              rx="130"
-              ry="18"
-              fill="var(--foreground)"
-              opacity="0.08"
-              className={!reducedMotion ? "animate-shadow" : ""}
-            />
+          {/* shadow (CSS animated) */}
+          <ellipse className="sbt3-shadow" cx="450" cy="230" rx="320" ry="28" fill="#000" opacity="0.08" />
+
+          {/* bobbing group (CSS animated) */}
+          <g className="sbt3-train-bob">
+            <rect x="40" y="120" width="760" height="44" rx="6" fill="#000" />
+            <rect x="70" y="90" width="620" height="86" rx="14" fill="#fff" stroke="#000" strokeWidth="6" />
+            <rect x="80" y="60" width="520" height="110" rx="50" fill="#000" stroke="#000" strokeWidth="6" />
+            <rect x="115" y="110" width="450" height="8" rx="4" fill="#fff" />
+            <rect x="115" y="92" width="300" height="8" rx="4" fill="#fff" opacity="0.95" />
+            {/* chimney + domes */}
+            <rect x="120" y="18" width="46" height="46" rx="8" fill="#000" stroke="#000" strokeWidth="4" />
+            <rect x="110" y="6" width="66" height="14" rx="6" fill="#000" stroke="#000" strokeWidth="4" />
+            <ellipse cx="300" cy="48" rx="42" ry="18" fill="#000" stroke="#000" strokeWidth="4" />
+            <ellipse cx="420" cy="42" rx="36" ry="14" fill="#000" stroke="#000" strokeWidth="4" />
           </g>
 
-          {/* train group */}
-          <g id="train" transform="translate(0,12)">
-            {/* main body with soft stroke and gradient */}
-            <rect
-              x="20"
-              y="20"
-              rx="18"
-              ry="18"
-              width="320"
-              height="56"
-              fill="url(#bodyGrad)"
-              className="train-body-stroke"
-              stroke="rgba(0,0,0,0.06)"
-              filter="url(#softShadow)"
-            />
+          {/* coupling + cab */}
+          <g>
+            <rect x="600" y="114" width="92" height="12" rx="6" fill="#000" />
+            <rect x="688" y="94" width="8" height="48" rx="4" fill="#000" />
+            <g clipPath="url(#cabClip3)">
+              <rect x="690" y="38" width="160" height="140" rx="10" fill="#fff" stroke="#000" strokeWidth="6" />
+              <rect x="678" y="26" width="184" height="20" rx="8" fill="#000" />
+              <rect x="716" y="64" width="40" height="36" rx="6" fill="#000" />
+              <rect x="768" y="64" width="40" height="36" rx="6" fill="#000" />
+              <path d="M 722 120 L 762 120 L 762 92 L 730 92 Q 724 104 722 120 Z" fill="#f6f6f6" stroke="#000" strokeWidth="3" />
+              <rect x="724" y="112" width="36" height="54" rx="4" fill="#fff" stroke="#000" strokeWidth="3" />
+              <rect x="764" y="122" width="6" height="36" rx="3" fill="#000" />
+              <rect x="758" y="166" width="28" height="8" rx="3" fill="#000" />
+            </g>
+          </g>
 
-            {/* side detailing stripe */}
-            <rect x="28" y="44" width="304" height="6" rx="3" fill="rgba(255,255,255,0.12)" />
-
-            {/* windows (even spacing) */}
-            {[
-              { x: 46, w: 28 },
-              { x: 86, w: 28 },
-              { x: 126, w: 28 },
-              { x: 186, w: 28 },
-              { x: 226, w: 28 },
-              { x: 266, w: 28 },
-            ].map((win, i) => (
-              <g key={`w-${i}`}>
-                <rect
-                  x={win.x}
-                  y="30"
-                  width={win.w}
-                  height="22"
-                  rx="4"
-                  ry="4"
-                  className="train-window"
-                  fill="url(#windowGrad)"
-                />
-                <rect
-                  x={win.x + 3}
-                  y="33"
-                  width={win.w - 6}
-                  height="16"
-                  rx="3"
-                  ry="3"
-                  fill="rgba(255,255,255,0.14)"
-                />
+          {/* wheel groups with data attributes used by rAF loop */}
+          <g transform="translate(220,190)">
+            <g data-wheel className="sbt3-wheel w-0" style={{ transformBox: "fill-box", transformOrigin: "center" }}>
+              <circle r="46" fill="#000" stroke="#000" strokeWidth="6" />
+              <circle r="20" fill="#fff" />
+              <g stroke="#000" strokeWidth="6" strokeLinecap="round">
+                <line x1="-28" y1="-28" x2="28" y2="28" />
+                <line x1="-28" y1="28" x2="28" y2="-28" />
               </g>
-            ))}
-
-            {/* door */}
-            <rect x="154" y="28" width="38" height="30" rx="4" className="train-door" />
-
-            {/* front nose */}
-            <path d="M20 56 L12 70 L20 76 L20 56 Z" fill="url(#bodyGrad)" />
-
-            {/* back stub */}
-            <rect x="320" y="34" width="10" height="28" rx="6" fill="url(#bodyGrad)" />
-
-            {/* small logo circle */}
-            <g transform="translate(40,46)">
-              <circle r="8" fill="white" opacity="0.95" />
-              <text className="metro-label" x="0" y="3" textAnchor="middle">
-                KM
-              </text>
+              <circle r="8" fill="#000" stroke="#fff" strokeWidth="3" />
             </g>
-
-            {/* wheels group - each wheel is a rotated group so rotation animates nicely */}
-            <g id="wheels" transform="translate(0,90)">
-              {[44, 104, 164, 224].map((cx, idx) => (
-                <g key={`wheel-${idx}`} transform={`translate(${cx},0)`}>
-                  <g className={!reducedMotion ? "animate-wheel" : ""} style={{ transformBox: "fill-box", transformOrigin: "center" }}>
-                    <circle cx="0" cy="0" r="16" fill="var(--foreground)" opacity="0.9" />
-                    <circle cx="0" cy="0" r="7" fill="white" />
-                    {/* wheel spokes */}
-                    <g stroke="rgba(255,255,255,0.08)" strokeWidth="1.6">
-                      <line x1="-6" y1="-6" x2="6" y2="6" />
-                      <line x1="-6" y1="6" x2="6" y2="-6" />
-                    </g>
-                  </g>
-                </g>
-              ))}
+            {/* connecting rod: mark as data-rod so rAF rotates it */}
+            <g data-rod style={{ transformBox: "fill-box", transformOrigin: "center" }}>
+              <rect x="44" y="-8" width="200" height="16" rx="8" fill="#000" />
             </g>
+          </g>
 
-            {/* subtle roof highlights */}
-            <path d="M30 24 H330" stroke="rgba(255,255,255,0.06)" strokeWidth="2" />
+          <g transform="translate(360,190)">
+            <g data-wheel className="sbt3-wheel w-1" style={{ transformBox: "fill-box", transformOrigin: "center" }}>
+              <circle r="46" fill="#000" stroke="#000" strokeWidth="6" />
+              <circle r="20" fill="#fff" />
+              <g stroke="#000" strokeWidth="6" strokeLinecap="round">
+                <line x1="-28" y1="-28" x2="28" y2="28" />
+                <line x1="-28" y1="28" x2="28" y2="-28" />
+              </g>
+              <circle r="8" fill="#000" stroke="#fff" strokeWidth="3" />
+            </g>
+          </g>
+
+          <g transform="translate(500,190)">
+            <g data-wheel className="sbt3-wheel w-2" style={{ transformBox: "fill-box", transformOrigin: "center" }}>
+              <circle r="46" fill="#000" stroke="#000" strokeWidth="6" />
+              <circle r="20" fill="#fff" />
+              <g stroke="#000" strokeWidth="6" strokeLinecap="round">
+                <line x1="-28" y1="-28" x2="28" y2="28" />
+                <line x1="-28" y1="28" x2="28" y2="-28" />
+              </g>
+              <circle r="8" fill="#000" stroke="#fff" strokeWidth="3" />
+            </g>
+          </g>
+
+          <g transform="translate(640,190)">
+            <g data-wheel className="sbt3-wheel w-3" style={{ transformBox: "fill-box", transformOrigin: "center" }}>
+              <circle r="30" fill="#000" stroke="#000" strokeWidth="5" />
+              <circle r="12" fill="#fff" />
+              <g stroke="#000" strokeWidth="5" strokeLinecap="round">
+                <line x1="-18" y1="-18" x2="18" y2="18" />
+                <line x1="-18" y1="18" x2="18" y2="-18" />
+              </g>
+            </g>
+          </g>
+
+          <g transform="translate(760,190)">
+            <g data-wheel className="sbt3-wheel w-4" style={{ transformBox: "fill-box", transformOrigin: "center" }}>
+              <circle r="22" fill="#000" stroke="#000" strokeWidth="4" />
+              <circle r="9" fill="#fff" />
+            </g>
           </g>
         </svg>
       </div>
+
+      <div className="sbt3-controls" aria-hidden={reduced}>
+        <button
+          className="sbt3-btn"
+          onClick={toggle}
+          aria-pressed={isPlaying}
+          disabled={reduced}
+          title={reduced ? "Animations disabled (prefers-reduced-motion)" : isPlaying ? "Pause" : "Play"}
+        >
+          {reduced ? "Reduced motion" : isPlaying ? "Pause" : "Play"}
+        </button>
+      </div>
     </div>
-  )
+  );
 }
