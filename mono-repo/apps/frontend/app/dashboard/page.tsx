@@ -18,7 +18,6 @@ export default function Dashboard() {
         setLoading(true)
         const data = await fetchTrainsets()
         setTrainsets(data)
-        console.log(data)
         setError(null)
       } catch (err) {
         console.error("Failed to load trainsets:", err)
@@ -70,7 +69,7 @@ export default function Dashboard() {
    */
   const mileageValue = (m: Trainset["mileage"]): number => {
     if (typeof m === "number") return Number.isFinite(m) ? m : 0
-    if (m && typeof (m as any).totalMileageKM === "number") return (m as any).totalMileageKM
+    if (m && typeof (m as any).mileageSinceLastServiceKM === "number") return (m as any).mileageSinceLastServiceKM
     return 0
   }
 
@@ -90,12 +89,11 @@ export default function Dashboard() {
   const avgMileage =
     totalTrainsets > 0
       ? Math.round(
-          trainsets.reduce((sum, t) => {
-            return sum + mileageValue(t.mileage)
-          }, 0) / totalTrainsets,
-        )
+        trainsets.reduce((sum, t) => {
+          return sum + mileageValue(t.mileage)
+        }, 0) / totalTrainsets,
+      )
       : 0
-
   // Open job cards
   const totalOpenJobs = trainsets.reduce((sum, t) => sum + t.job_cards.filter((j) => j.status === "open").length, 0)
 
@@ -106,15 +104,14 @@ export default function Dashboard() {
 
   // Top recommendations (highest priority scores)
   const topRecommendations = trainsets
-    .filter((t) => t.status === "Active" || t.status === "Standby")
+    .filter((t) => t.operations?.operationalStatus === "In_Service")
     .sort((a, b) => b.priority_score - a.priority_score)
     .slice(0, 3)
     .map((trainset) => ({
       trainset,
       reason: getRecommendationReason(trainset, mileageValue),
       confidence: trainset.availability_confidence ?? trainset.priority_score,
-    }))
-
+    })) 
   // Earliest fitness expiry (next 5)
   const upcomingFitness = trainsets
     .map((t) => ({
@@ -186,7 +183,6 @@ export default function Dashboard() {
               )}
             </div>
           </div>
-
           {/* Upcoming Fitness Renewals */}
           <div>
             <h2 className="text-lg font-semibold text-text mb-4 text-balance">Upcoming Fitness Renewals</h2>
@@ -204,9 +200,8 @@ export default function Dashboard() {
                       </div>
                       <div className="text-right">
                         <p
-                          className={`font-medium ${
-                            trainset.daysUntilExpiry < 7 ? "text-red-600 dark:text-red-400" : "text-text"
-                          }`}
+                          className={`font-medium ${trainset.daysUntilExpiry < 7 ? "text-red-600 dark:text-red-400" : "text-text"
+                            }`}
                         >
                           {trainset.daysUntilExpiry} days
                         </p>

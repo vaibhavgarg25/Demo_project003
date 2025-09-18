@@ -44,9 +44,9 @@ export function RecommendationCard({ trainset, reason, confidence }: Recommendat
             <p className="text-sm text-muted truncate">{reason}</p>
 
             <div className="flex items-center gap-4 mt-2 text-xs text-muted">
-              <span>Mileage: {trainset.mileage.toLocaleString()}</span>
+              <span>Mileage: {trainset.mileage.mileageSinceLastServiceKM}</span>
               <span>Jobs: {trainset.job_cards.filter((j) => j.status === "open").length}</span>
-              <span>Position: {trainset.stabling_position}</span>
+              <span>Bay_Position: {trainset.stabling_position}</span>
             </div>
           </div>
 

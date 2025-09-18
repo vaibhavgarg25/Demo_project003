@@ -377,7 +377,6 @@ export async function fetchTrainsets(): Promise<Trainset[]> {
     const baseUrl = process.env.NEXT_PUBLIC_CLIENT_URL || "http://localhost:8000"
     const token = typeof window !== "undefined" ? localStorage.getItem("token") : null
 
-    console.log("[v0] Fetching trainsets from:", `${baseUrl}/api/train/getTrains`)
 
     const response = await fetch(`${baseUrl}/api/train/getTrains`, {
       method: "GET",
@@ -392,13 +391,11 @@ export async function fetchTrainsets(): Promise<Trainset[]> {
     }
 
     const data = await response.json()
-    console.log("[v0] Raw backend data:", data)
 
     // Transform backend data to match expected Trainset format
     const trains = Array.isArray(data) ? data : data.data || []
     const transformedTrains = trains.map(transformBackendDataToTrainset)
 
-    console.log("[v0] Transformed trainsets:", transformedTrains)
     return transformedTrains
   } catch (error) {
     console.error("[v0] Failed to fetch trainsets from backend:", error)
@@ -413,7 +410,6 @@ export async function fetchTrainsets(): Promise<Trainset[]> {
 }
 
 function transformBackendDataToTrainset(backendTrain: any): Trainset {
-  console.log("[v0] Transforming backend train:", backendTrain)
 
   // Map operational status to legacy format
   const mapOperationalStatus = (status: string): "Active" | "Standby" | "Maintenance" | "OutOfService" => {
@@ -523,7 +519,6 @@ function transformBackendDataToTrainset(backendTrain: any): Trainset {
     ],
   }
 
-  console.log("[v0] Transformed train result:", transformed)
   return transformed
 }
 
@@ -595,7 +590,6 @@ if (require.main === module) {
     const token = typeof window !== "undefined" ? localStorage.getItem("token") || "" : ""
     try {
       const parsed = await parseAllTrains(baseUrl, token)
-      console.log(JSON.stringify(parsed, null, 2))
     } catch (e: any) {
       console.error("Error parsing trains:", e.message || e)
       process.exit(1)

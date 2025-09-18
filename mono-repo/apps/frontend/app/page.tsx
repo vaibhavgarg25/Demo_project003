@@ -21,7 +21,6 @@ export default function MetroLanding() {
   const handleSignup = (e: React.FormEvent) => {
     e.preventDefault()
     // Handle signup logic here
-    console.log("Signup:", formData)
   }
 
   return (
