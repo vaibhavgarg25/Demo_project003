@@ -500,7 +500,7 @@ const processRelatedModels = async (row: CSVRow, trainId: string, results: any) 
       },
       create: {
         trainId,
-        operationalStatus: 'In_Service', // Default value if not provided
+        operationalStatus: 'in_service', // Default value if not provided
         reasonForStatus: row.reasonForStatus || null,
         rank: row.rank ? parseInt(row.rank) : null,
         score: row.score ? parseInt(row.score) : null,

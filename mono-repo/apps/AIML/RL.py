@@ -143,7 +143,7 @@ if SB3_AVAILABLE:
             numeric_cols = [
                 "OpenJobCards", "ClosedJobCards", "ExposureHoursAccrued", "ExposureHoursTarget", "ExposureDailyQuota",
                 "TotalMileageKM", "MileageSinceLastServiceKM", "MileageBalanceVariance", "BrakepadWear%", "HVACWear%",
-                "CleaningSlotStatus", "BayPositionID", "ShuntingMovesRequired", "StablingSequenceOrder", "JobCardPriority",
+                "BayPositionID", "ShuntingMovesRequired", "StablingSequenceOrder", "JobCardPriority",
                 "BrandingCompletionRatio", "MileageBalanceAbs", "CleaningPriority", "ShuntingPriority", "Score", "Rank"
             ]
             for c in numeric_cols:
@@ -310,9 +310,9 @@ if SB3_AVAILABLE:
                     breakdown["brand_missed"] = -3.0
 
             # Cleaning
-            cleaning_slot = int(row.get("CleaningSlotStatus", 0))
+            cleaning_slot = row.get("CleaningSlotStatus", 0)
             cleaning_required = int(row.get("CleaningRequired_flag", 0))
-            if cleaning_slot == 2 and chosen == 0:
+            if cleaning_slot == 'in_progress' and chosen == 0:
                 reward -= 10.0
                 breakdown["clean_inprogress_penalty"] = -10.0
             elif cleaning_required == 1 and chosen != 2:
@@ -504,7 +504,7 @@ def infer_policy(csv_path: str, model_path: str = None, out_csv: str = "next_day
     numeric_cols = [
         "OpenJobCards", "ClosedJobCards", "ExposureHoursAccrued", "ExposureHoursTarget",
         "TotalMileageKM", "MileageSinceLastServiceKM", "BrakepadWear%", "HVACWear%",
-        "CleaningSlotStatus", "ShuntingMovesRequired", "JobCardPriority",
+        "ShuntingMovesRequired", "JobCardPriority",
         "Score", "Rank"
     ]
     for c in numeric_cols:
@@ -579,7 +579,7 @@ def infer_policy(csv_path: str, model_path: str = None, out_csv: str = "next_day
         ).astype(int)
         
         # Priority scoring
-        df["RL priority"] = (
+        df["RL_priority"] = (
             df["Score"] * 1.0 + 
             df["eligible"] * 100.0 - 
             df["OpenJobCards"] * 5.0 - 
@@ -587,7 +587,7 @@ def infer_policy(csv_path: str, model_path: str = None, out_csv: str = "next_day
             df["BrandingActive_flag"] * 10.0
         )
         
-        df_sorted = df.sort_values(["eligible", "RL priority"], ascending=[False, False]).reset_index()
+        df_sorted = df.sort_values(["eligible", "RL_priority"], ascending=[False, False]).reset_index()
         
         assignments = []
         remaining_quota = int(DEFAULT_CONFIG["service_quota"])
