@@ -1,0 +1,12 @@
+{
+  "message": "RL scheduling completed successfully",
+  "input_file_path": "C:/Users/HP/OneDrive/Desktop/sih/mono-repo/apps/shared\\output/moo\\moo_result_run_1758198966082_9f53bo.csv",
+  "output_file_path": "C:/Users/HP/OneDrive/Desktop/sih/mono-repo/apps/shared\\output/rl\\rl_final_run_1758198966082_9f53bo.csv",
+  "total_trains": 25,
+  "trains_in_service": 13,
+  "trains_under_maintenance": 4,
+  "trains_standby": 8,
+  "timestamp": "2025-09-18T18:06:52.355438",
+  "run_id": "run_1758198966082_9f53bo",
+  "stage": "rl_complete"
+}
