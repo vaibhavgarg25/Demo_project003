@@ -358,29 +358,54 @@ export const handleRlFinished = async (runId: string, filePath?: string) => {
       duration: new Date().getTime() - run.startedAt.getTime()
     });
 
-    // Optionally update database with final results (DISABLED for speed)
-    // Note: Disabling database updates to speed up pipeline completion
-    const shouldUpdateDatabase = false; // process.env.UPDATE_DATABASE_ON_COMPLETION === 'true';
+    // Enable database updates - you can control this via environment variable
+    const shouldUpdateDatabase = process.env.UPDATE_DATABASE_ON_COMPLETION === 'true' || true; // Default to true for now
     
     if (shouldUpdateDatabase) {
+      logger.info("Starting database update with RL results", { runId, filePath });
+      
       // Read the final RL result file
       const buffer = await StorageManager.readFileBuffer(filePath);
 
       type UploadStatus = Record<string, { status: "completed" | "failed" | "processing"; progress?: number; message?: string; results?: any }>;
-      const tempJobId = `job_${Date.now()}`;
+      const tempJobId = `rl_job_${Date.now()}`;
       const uploadStatusMap: UploadStatus = {
         [tempJobId]: { status: "processing", progress: 0 },
       };
 
+      // Log the buffer size to ensure file is read correctly
+      logger.info("File buffer read successfully", { 
+        runId, 
+        filePath, 
+        bufferSize: buffer.length,
+        tempJobId 
+      });
+
       await processCSV(buffer, tempJobId, uploadStatusMap);
 
-      if (!uploadStatusMap[tempJobId] || uploadStatusMap[tempJobId].status !== "completed") {
-        throw new Error(uploadStatusMap[tempJobId]?.message || "CSV processing failed without message");
+      // Check the upload status
+      const uploadResult = uploadStatusMap[tempJobId];
+      logger.info("CSV processing completed", { 
+        runId, 
+        tempJobId, 
+        uploadStatus: uploadResult?.status,
+        uploadMessage: uploadResult?.message,
+        results: uploadResult?.results 
+      });
+
+      if (!uploadResult || uploadResult.status !== "completed") {
+        throw new Error(uploadResult?.message || "CSV processing failed without message");
       }
 
       await prisma.train.updateMany({ data: { updatedAt: new Date() } });
       notifyClients("new_data_ready");
-      logger.info("Train data successfully updated in DB from RL result file", { runId, filePath });
+      logger.info("Train data successfully updated in DB from RL result file", { 
+        runId, 
+        filePath,
+        recordsProcessed: uploadResult.results 
+      });
+    } else {
+      logger.info("Database update skipped (UPDATE_DATABASE_ON_COMPLETION is not set to 'true')", { runId });
     }
 
   } catch (error) {

@@ -1,0 +1,19 @@
+{
+  "message": "RL scheduling started",
+  "input_file_path": "C:/Users/HP/OneDrive/Desktop/sih/mono-repo/apps/shared\\output/moo\\moo_result_run_1758198966082_9f53bo.csv",
+  "config": {
+    "csv_path": "",
+    "service_quota": 13,
+    "episode_days": 7,
+    "daily_mileage_if_in_service": 400.0,
+    "daily_exposure_hours": 16.0,
+    "jobcard_reduction_if_maintenance": 2,
+    "jobcard_new_per_day_lambda": 0.1,
+    "today": null,
+    "seed": null,
+    "format": "json"
+  },
+  "timestamp": "2025-09-18T18:06:09.062720",
+  "run_id": "run_1758198966082_9f53bo",
+  "stage": "rl_start"
+}
