@@ -6,27 +6,83 @@ import type { Trainset } from "@/lib/mock-data"
 import { daysUntil, sortByKey } from "@/lib/utils"
 
 interface CompactTableProps {
-  data: Trainset[]
+  data: (Trainset & { health_score?: number })[]
   onRowClick?: (trainset: Trainset) => void
 }
 
-type SortKey = keyof Trainset | "fitnessExpiry" | "openJobs"
+type SortKey = keyof Trainset | "fitnessExpiry" | "openJobs" | "health_score" | "reason"
 type SortDirection = "asc" | "desc"
+
+// Helper function to get status reason
+const getStatusReason = (trainset: Trainset & { health_score?: number }) => {
+  const operationalStatus = trainset.operations?.operationalStatus?.toLowerCase() || trainset.status.toLowerCase()
+  const openJobs = trainset.jobCardStatus?.openJobCards || 0
+  const brakeWear = trainset.mileage?.brakepadWearPercent || 0
+  const hvacWear = trainset.mileage?.hvacWearPercent || 0
+  
+  // Check fitness status
+  const rollingStockExpiry = trainset.fitness?.rollingStockFitnessExpiryDate 
+    ? daysUntil(trainset.fitness.rollingStockFitnessExpiryDate) 
+    : -1
+  const signallingExpiry = trainset.fitness?.signallingFitnessExpiryDate 
+    ? daysUntil(trainset.fitness.signallingFitnessExpiryDate) 
+    : -1
+  const telecomExpiry = trainset.fitness?.telecomFitnessExpiryDate 
+    ? daysUntil(trainset.fitness.telecomFitnessExpiryDate) 
+    : -1
+  
+  // Determine reason based on status and conditions
+  switch (operationalStatus) {
+    case "in_service":
+    case "active":
+      if (openJobs > 0) return `${openJobs} pending job cards`
+      return "Operational"
+      
+    case "under_maintenance":
+    case "maintenance":
+      if (brakeWear > 80) return "Brake maintenance required"
+      if (hvacWear > 80) return "HVAC maintenance required"
+      if (openJobs > 5) return "Multiple maintenance jobs"
+      if (rollingStockExpiry < 0) return "Fitness certificate expired"
+      return "Scheduled maintenance"
+      
+    case "standby":
+      if (rollingStockExpiry < 7 && rollingStockExpiry > 0) return "Fitness expiring soon"
+      if (openJobs > 0) return "Minor maintenance pending"
+      return "Ready for deployment"
+      
+    case "out_of_service":
+    case "outofservice":
+      if (rollingStockExpiry < 0) return "Fitness certificate expired"
+      if (signallingExpiry < 0) return "Signalling fitness expired"
+      if (telecomExpiry < 0) return "Telecom fitness expired"
+      if (brakeWear > 90 || hvacWear > 90) return "Critical wear condition"
+      if (openJobs > 10) return "Extensive maintenance required"
+      return "Out of service"
+      
+    default:
+      return "Status unknown"
+  }
+}
 
 const statusColors = {
   Active: "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400",
   Standby: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400",
   Maintenance: "bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400",
   OutOfService: "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400",
+  in_service: "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400",
+  standby: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400",
+  under_maintenance: "bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400",
 }
 
 const columns = [
   { key: "id" as SortKey, label: "ID", visible: true },
   { key: "status" as SortKey, label: "Status", visible: true },
-  { key: "fitnessExpiry" as SortKey, label: "Fitness Days", visible: true },
+  { key: "health_score" as SortKey, label: "Health Score", visible: true },
   { key: "openJobs" as SortKey, label: "Open Jobs", visible: true },
-  { key: "mileage" as SortKey, label: "Mileage", visible: true },
-  { key: "stabling_position" as SortKey, label: "Position", visible: false },
+  { key: "mileage" as SortKey, label: "Total Mileage", visible: true },
+  { key: "stabling_position" as SortKey, label: "Bay Position", visible: true },
+  { key: "reason" as SortKey, label: "Status Reason", visible: true },
 ]
 
 export function CompactTable({ data, onRowClick }: CompactTableProps) {
@@ -51,9 +107,15 @@ export function CompactTable({ data, onRowClick }: CompactTableProps) {
       })
     } else if (sortKey === "openJobs") {
       working = working.sort((a, b) => {
-        const aJobs = a.job_cards?.filter((j) => j.status === "open").length || 0
-        const bJobs = b.job_cards?.filter((j) => j.status === "open").length || 0
+        const aJobs = a.jobCardStatus?.openJobCards || 0
+        const bJobs = b.jobCardStatus?.openJobCards || 0
         return sortDirection === "asc" ? aJobs - bJobs : bJobs - aJobs
+      })
+    } else if (sortKey === "health_score") {
+      working = working.sort((a, b) => {
+        const aScore = (a as any).health_score || 0
+        const bScore = (b as any).health_score || 0
+        return sortDirection === "asc" ? aScore - bScore : bScore - aScore
       })
     } else {
       working = sortByKey(working, sortKey as keyof Trainset, sortDirection)
@@ -81,7 +143,7 @@ export function CompactTable({ data, onRowClick }: CompactTableProps) {
   if (data.length === 0) {
     return (
       <div className="bg-surface border border-border rounded-lg p-8 text-center">
-        <p className="text-muted">No trainset data available. Please check your API connection.</p>
+        <p className="text-muted">No trainset data available. Please check your API connection or ensure trains are loaded.</p>
       </div>
     )
   }
@@ -121,14 +183,16 @@ export function CompactTable({ data, onRowClick }: CompactTableProps) {
             </thead>
             <tbody className="divide-y divide-border">
               {paginatedData.map((trainset) => {
-                const fitnessExpiry = trainset.fitness_certificate?.expiry_date
-                  ? daysUntil(trainset.fitness_certificate.expiry_date)
+                const fitnessExpiry = trainset.fitness?.rollingStockFitnessExpiryDate
+                  ? daysUntil(trainset.fitness.rollingStockFitnessExpiryDate)
                   : 999
-                const openJobs = trainset.job_cards?.filter((j) => j.status === "open").length || 0
+                const openJobs = trainset.jobCardStatus?.openJobCards || 0
+                const healthScore = (trainset as any).health_score || 0
+                const currentStatus = trainset.operations?.operationalStatus || trainset.status
 
                 return (
                   <tr
-                    key={trainset.id}
+                    key={trainset.trainID}
                     className="hover:bg-bg-hover transition-colors cursor-pointer"
                     onClick={() => onRowClick?.(trainset)}
                   >
@@ -139,19 +203,28 @@ export function CompactTable({ data, onRowClick }: CompactTableProps) {
                       <td className="px-4 py-3">
                         <span
                           className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                            statusColors[trainset.status] ||
+                            statusColors[currentStatus as keyof typeof statusColors] ||
                             "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400"
                           }`}
                         >
-                          {trainset.status}
+                          {currentStatus}
                         </span>
                       </td>
                     )}
-                    {visibleColumns.fitnessExpiry && (
+                    {visibleColumns.health_score && (
                       <td className="px-4 py-3 text-sm text-text">
-                        <span className={fitnessExpiry <= 7 ? "text-red-600 dark:text-red-400 font-medium" : ""}>
-                          {typeof fitnessExpiry === "number" ? `${Math.max(fitnessExpiry, 0)} days` : "No data"}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${
+                            healthScore >= 80 ? 'bg-green-500' : 
+                            healthScore >= 60 ? 'bg-yellow-500' : 'bg-red-500'
+                          }`}></div>
+                          <span className={`font-medium ${
+                            healthScore >= 80 ? 'text-green-600 dark:text-green-400' : 
+                            healthScore >= 60 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'
+                          }`}>
+                            {healthScore}%
+                          </span>
+                        </div>
                       </td>
                     )}
                     {visibleColumns.openJobs && (
@@ -163,16 +236,28 @@ export function CompactTable({ data, onRowClick }: CompactTableProps) {
                     )}
                     {visibleColumns.mileage && (
                       <td className="px-4 py-3 text-sm text-text">
-                        {typeof trainset.mileage === "number"
-                          ? trainset.mileage.toLocaleString()
-                          : typeof trainset.mileage === "object" && trainset.mileage?.totalMileageKM
-                          ? trainset.mileage.totalMileageKM.toLocaleString()
-                          : 0}{" "}
-                        km
+                        {(trainset.mileage?.totalMileageKM || 0).toLocaleString()} km
                       </td>
                     )}
                     {visibleColumns.stabling_position && (
-                      <td className="px-4 py-3 text-sm text-text">{trainset.stabling_position || "N/A"}</td>
+                      <td className="px-4 py-3 text-sm text-text">
+                        {trainset.stabling?.bayPositionID || trainset.stabling_position || "N/A"}
+                      </td>
+                    )}
+                    {visibleColumns.reason && (
+                      <td className="px-4 py-3 text-sm text-text">
+                        <span className={`${
+                          currentStatus?.toLowerCase().includes('service') 
+                            ? 'text-green-600 dark:text-green-400' 
+                            : currentStatus?.toLowerCase().includes('maintenance')
+                            ? 'text-orange-600 dark:text-orange-400'
+                            : currentStatus?.toLowerCase().includes('standby')
+                            ? 'text-yellow-600 dark:text-yellow-400'
+                            : 'text-red-600 dark:text-red-400'
+                        }`}>
+                          {getStatusReason(trainset as any)}
+                        </span>
+                      </td>
                     )}
                     <td className="px-4 py-3">
                       <button
@@ -181,7 +266,7 @@ export function CompactTable({ data, onRowClick }: CompactTableProps) {
                           onRowClick?.(trainset)
                         }}
                         className="p-1 rounded-md hover:bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-text focus:ring-offset-2"
-                        aria-label={`View details for ${trainset.id}`}
+                        aria-label={`View details for ${trainset.trainID}`}
                       >
                         <Eye className="w-4 h-4 text-muted" />
                       </button>

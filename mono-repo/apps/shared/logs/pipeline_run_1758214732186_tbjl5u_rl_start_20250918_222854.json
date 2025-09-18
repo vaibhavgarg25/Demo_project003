@@ -1,0 +1,19 @@
+{
+  "message": "RL scheduling started",
+  "input_file_path": "c:/Users/dilip/OneDrive/Desktop/Web Dev/KochiMetro/Demo_project003/mono-repo/apps/shared\\output/moo\\moo_result_run_1758214732186_tbjl5u.csv",
+  "config": {
+    "csv_path": "",
+    "service_quota": 13,
+    "episode_days": 7,
+    "daily_mileage_if_in_service": 400.0,
+    "daily_exposure_hours": 16.0,
+    "jobcard_reduction_if_maintenance": 2,
+    "jobcard_new_per_day_lambda": 0.1,
+    "today": null,
+    "seed": null,
+    "format": "json"
+  },
+  "timestamp": "2025-09-18T22:28:54.430569",
+  "run_id": "run_1758214732186_tbjl5u",
+  "stage": "rl_start"
+}

@@ -1,0 +1,12 @@
+{
+  "message": "RL scheduling completed successfully",
+  "input_file_path": "c:/Users/dilip/OneDrive/Desktop/Web Dev/KochiMetro/Demo_project003/mono-repo/apps/shared\\output/moo\\moo_result_run_1758215171692_0gxlga.csv",
+  "output_file_path": "c:/Users/dilip/OneDrive/Desktop/Web Dev/KochiMetro/Demo_project003/mono-repo/apps/shared\\output/rl\\rl_final_run_1758215171692_0gxlga.csv",
+  "total_trains": 25,
+  "trains_in_service": 13,
+  "trains_under_maintenance": 4,
+  "trains_standby": 8,
+  "timestamp": "2025-09-18T22:36:18.022383",
+  "run_id": "run_1758215171692_0gxlga",
+  "stage": "rl_complete"
+}
