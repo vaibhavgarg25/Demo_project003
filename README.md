@@ -11,7 +11,7 @@
 
 #### Create Backend .env file
 ```bash
-cp apps/backend/.env.example apps/backend/.env
+cd apps/backend/.env.example apps/backend/.env
 ```
 
 Edit `apps/backend/.env`:
