@@ -323,7 +323,7 @@ export default function Dashboard() {
           </div>
 
           {/* Recommendations */}
-          <div>
+          {/* <div>
             <h3 className="text-lg font-semibold text-text mt-2">
               Recommended for Service
             </h3>
@@ -337,7 +337,7 @@ export default function Dashboard() {
                 />
               ))}
             </div>
-          </div>
+          </div> */}
         </div>
 
         {/* Right Column */}
