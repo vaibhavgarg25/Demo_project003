@@ -1,7 +1,26 @@
-# Quick Setup Guide - File Path-Based Pipeline
+## 📌 Problem Statement 
+**SIH25081** : AI-Driven Train Induction Planning & Scheduling for Kochi Metro Rail Limited (KMRL).  
 
-## Prerequisites
-- Node.js (Backend)
+Design a system to automate and optimize the induction and 
+scheduling of trains for Kochi Metro, balancing maintenance, 
+safety, service quality, and operational efficiency.
+
+## ✅ Solution
+
+- Centralized platform for real-time train status monitoring (operational, maintenance, cleaning, safety).
+
+- Automated alerts for expiring fitness checks, maintenance due, and cleaning schedules.
+
+- Predictive analytics using ML for maintenance forecasting & downtime reduction.
+
+- User-friendly dashboards with role-based access for railway staff.
+
+## 🛠 Tech Stack
+- **Backend**: Node.js (Express)  
+- **Simulation/Optimization**: Python (FastAPI)  
+- **Shared Storage**: Local FS / Docker volumes
+- **Databases**: PostgreSQL (configurable)   
+
 - Python 3.8+ (FastAPI)
 - Shared storage accessible by both services
 
@@ -17,7 +36,7 @@ cd apps/backend/.env.example apps/backend/.env
 Edit `apps/backend/.env`:
 ```bash
 DATABASE_URL="your_database_url_here"
-FAST_API_BASE_URI="http://localhost:8000/api/v1"
+FAST_API_BASE_URI="http://localhost:8080/api/v1"
 SHARED_STORAGE_PATH="/tmp/shared_storage"  # Local development
 ```
 
@@ -30,7 +49,7 @@ Edit `apps/fastapi/.env`:
 ```bash
 DATABASE_URL="your_database_url_here"
 SHARED_STORAGE_PATH="/tmp/shared_storage"  # Must match backend
-BACKEND_BASE_URL="http://localhost:3000"
+BACKEND_BASE_URL="http://localhost:8000"
 ```
 
 ### 2. Create Shared Storage Directory
@@ -109,10 +128,10 @@ Both services should log storage directory creation on startup:
 #### Test Pipeline
 ```bash
 # Trigger manual pipeline run
-curl -X POST http://localhost:3000/api/webhook/start
+curl -X POST http://localhost:8000/api/webhook/start
 
 # Check pipeline status via logs or SSE events
-curl http://localhost:3000/api/events
+curl http://localhost:8000/api/events
 ```
 
 ## API Testing
@@ -133,7 +152,7 @@ cp test_train_data.csv /tmp/shared_storage/input/user_upload_test.csv
 
 #### 3. Test Simulation
 ```bash
-curl -X POST http://localhost:8000/api/v1/simulation/start-from-file \
+curl -X POST http://localhost:8080/api/v1/simulation/start-from-file \
   -H "Content-Type: application/json" \
   -d '{
     "file_path": "/tmp/shared_storage/input/user_upload_test.csv",
@@ -144,7 +163,7 @@ curl -X POST http://localhost:8000/api/v1/simulation/start-from-file \
 
 #### 4. Test MOO
 ```bash
-curl -X POST http://localhost:8000/api/v1/moo/rank-from-file \
+curl -X POST http://localhost:8080/api/v1/moo/rank-from-file \
   -H "Content-Type: application/json" \
   -d '{
     "simulation_result_file_path": "/tmp/shared_storage/output/simulation_result_test123.csv",
@@ -154,7 +173,7 @@ curl -X POST http://localhost:8000/api/v1/moo/rank-from-file \
 
 #### 5. Test RL
 ```bash
-curl -X POST http://localhost:8000/api/v1/rl/schedule-from-file \
+curl -X POST http://localhost:8080/api/v1/rl/schedule-from-file \
   -H "Content-Type: application/json" \
   -d '{
     "moo_result_file_path": "/tmp/shared_storage/output/moo_result_test123.csv",
@@ -194,19 +213,19 @@ tail -f apps/fastapi/logs/app.log
 #### Check Storage Stats
 ```bash
 # Backend
-curl http://localhost:3000/api/storage/stats
+curl http://localhost:8000/api/storage/stats
 
 # FastAPI  
-curl http://localhost:8000/api/v1/storage/stats
+curl http://localhost:8080/api/v1/storage/stats
 ```
 
 #### View Pipeline Status
 ```bash
 # Get running pipelines
-curl http://localhost:3000/api/webhook/runs
+curl http://localhost:8000/api/webhook/runs
 
 # Get specific run
-curl http://localhost:3000/api/webhook/runs/{runId}
+curl http://localhost:8000/api/webhook/runs/{runId}
 ```
 
 ## Production Deployment
