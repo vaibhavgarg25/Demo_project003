@@ -1,83 +1,88 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+@import "tailwindcss";
+@import "tw-animate-css";
 
-@import "../styles/tailwind.css";
+@custom-variant dark (&:is(.dark *));
 
-/* Updated design tokens:
-   - Light mode: strict Black & White
-   - Dark mode: Black + Charcoal Gray / Silver
-*/
 :root {
-  --background: #ffffff;            /* white */
-  --foreground: #000000;            /* black */
-  --card: #ffffff;
-  --card-foreground: #000000;
-  --popover: #ffffff;
-  --popover-foreground: #000000;
-  --primary: #000000;               /* primary action in black (on white) */
-  --primary-foreground: #ffffff;
-  --secondary: #111111;             /* near-black secondary */
-  --secondary-foreground: #ffffff;
-  --muted: #f8f8f8;
-  --muted-foreground: #111111;
-  --accent: #000000;
-  --accent-foreground: #ffffff;
-  --destructive: #b91c1c;
-  --destructive-foreground: #ffffff;
-  --border: #e5e7eb;                /* subtle light border */
-  --input: #ffffff;
-  --ring: #000000;
-  --radius: 0.5rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
 
-  /* sidebar tokens */
-  --sidebar: #ffffff;
-  --sidebar-foreground: #000000;
-  --sidebar-primary: #ffffff;
-  --sidebar-primary-foreground: #000000;
-  --sidebar-accent: #000000;
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #e5e7eb;
-  --sidebar-ring: #000000;
+  /* Added brand colors for the metro theme */
+  --brand-teal: 180 100% 50%;
+  --brand-teal-light: 180 100% 60%;
 }
 
-/* DARK MODE: Black + Charcoal Gray / Silver */
 .dark {
-  --background: #000000;            /* true black base */
-  --foreground: #d1d5db;            /* silver/neutral gray text (#d1d5db = Tailwind gray-300) */
-  --card: #0b0b0b;                  /* near-black cards */
-  --card-foreground: #e5e7eb;       /* slightly brighter silver */
-  --popover: #0b0b0b;
-  --popover-foreground: #e5e7eb;
-  --primary: #9ca3af;               /* charcoal gray accent (#9ca3af = Tailwind gray-400) */
-  --primary-foreground: #000000;    /* black text on silver buttons */
-  --secondary: #6b7280;             /* medium gray (#6b7280 = Tailwind gray-500) */
-  --secondary-foreground: #ffffff;
-  --muted: #111111;                 /* muted background */
-  --muted-foreground: #9ca3af;      /* charcoal gray text */
-  --accent: #9ca3af;                /* charcoal/silver accent */
-  --accent-foreground: #000000;
-  --destructive: #ef4444;
-  --destructive-foreground: #000000;
-  --border: rgba(156,163,175,0.2);  /* subtle charcoal border */
-  --input: #0b0b0b;
-  --ring: #9ca3af;
-  --radius: 0.5rem;
-
-  /* sidebar tokens */
-  --sidebar: #050505;
-  --sidebar-foreground: #d1d5db;
-  --sidebar-primary: #0b0b0b;
-  --sidebar-primary-foreground: #e5e7eb;
-  --sidebar-accent: #9ca3af;
-  --sidebar-accent-foreground: #000000;
-  --sidebar-border: rgba(156,163,175,0.15);
-  --sidebar-ring: #9ca3af;
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.145 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.145 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.985 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.396 0.141 25.723);
+  --destructive-foreground: oklch(0.637 0.237 25.331);
+  --border: oklch(0.269 0 0);
+  --input: oklch(0.269 0 0);
+  --ring: oklch(0.439 0 0);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(0.269 0 0);
+  --sidebar-ring: oklch(0.439 0 0);
 }
 
 @theme inline {
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* optional: --font-sans, --font-serif, --font-mono if they are applied in the layout.tsx */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -114,30 +119,221 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-
-  /* Added Tailwind color mappings for trainset-specific colors */
-  --color-status-active: var(--status-active);
-  --color-status-active-foreground: var(--status-active-foreground);
-  --color-status-maintenance: var(--status-maintenance);
-  --color-status-maintenance-foreground: var(--status-maintenance-foreground);
-  --color-status-inactive: var(--status-inactive);
-  --color-status-inactive-foreground: var(--status-inactive-foreground);
-  --color-health-excellent: var(--health-excellent);
-  --color-health-good: var(--health-good);
-  --color-health-fair: var(--health-fair);
-  --color-health-poor: var(--health-poor);
-  --color-health-critical: var(--health-critical);
-  --color-progress-bg: var(--progress-bg);
-  --color-metric-positive: var(--metric-positive);
-  --color-metric-warning: var(--metric-warning);
-  --color-metric-danger: var(--metric-danger);
 }
 
-/* Font import stays the same */
-@import url("/fonts/chirp.css");
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
 
-body {
-  background-color: var(--background);
-  color: var(--foreground);
-  font-family: "Chirp", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+/* ===================================================================
+   Custom components & visual effects
+   =================================================================== */
+
+/* Primary CTA button */
+.cta-primary {
+  background: linear-gradient(135deg, hsl(var(--brand-teal)) 0%, hsl(var(--brand-teal-light)) 100%);
+  color: white;
+  border: 1px solid hsl(var(--brand-teal-light));
+  box-shadow: 0 4px 14px 0 hsla(var(--brand-teal), 0.4), 0 0 0 1px hsla(var(--brand-teal), 0.1), inset 0 1px 0
+    hsla(0, 0%, 100%, 0.1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+  padding: 0.75rem 1.25rem;
+  border-radius: var(--radius);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.cta-primary::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.6s;
+}
+
+.cta-primary:hover::before {
+  left: 100%;
+}
+
+.cta-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px 0 hsla(var(--brand-teal), 0.5), 0 0 0 1px hsla(var(--brand-teal), 0.2), inset 0 1px 0
+    hsla(0, 0%, 100%, 0.15);
+}
+
+/* Spotlight glow that you can place in hero */
+.spotlight-glow {
+  background: radial-gradient(
+    circle at center,
+    hsla(var(--brand-teal), 0.25) 0%,
+    hsla(var(--brand-teal), 0.15) 25%,
+    hsla(var(--brand-teal), 0.08) 50%,
+    hsla(var(--brand-teal), 0.03) 70%,
+    transparent 85%
+  );
+  filter: blur(60px);
+  animation: pulse-glow 4s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.7;
+  }
+}
+
+/* Added floating animation for train */
+@keyframes animate-float {
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.animate-float {
+  animation: animate-float 6s ease-in-out infinite;
+}
+
+/* Train float + glow effect */
+.train-glow {
+  filter: drop-shadow(0 0 30px hsla(var(--brand-teal), 0.4)) drop-shadow(0 0 60px hsla(var(--brand-teal), 0.2));
+  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.train-glow:hover {
+  filter: drop-shadow(0 0 40px hsla(var(--brand-teal), 0.6)) drop-shadow(0 0 80px hsla(var(--brand-teal), 0.3));
+}
+
+/* Feature cards */
+.feature-card {
+  border: 1px solid hsl(var(--border));
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+  background: transparent;
+  border-radius: var(--radius);
+}
+
+.feature-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, hsl(var(--brand-teal)), transparent);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.feature-card:hover {
+  transform: translateY(-4px);
+  border-color: hsl(var(--brand-teal));
+  box-shadow: 0 20px 25px -5px hsla(0, 0%, 0%, 0.1), 0 10px 10px -5px hsla(0, 0%, 0%, 0.04), 0 0 0 1px
+    hsla(var(--brand-teal), 0.1);
+}
+
+.feature-card:hover::before {
+  opacity: 1;
+}
+
+/* Glass morphism card (use sparingly on dark backgrounds) */
+.glass-card {
+  background: hsla(var(--card), 0.8);
+  backdrop-filter: blur(20px);
+  border: 1px solid hsla(var(--border), 0.2);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+/* Animated gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, hsl(var(--foreground)), hsl(var(--brand-teal)));
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-size: 200% 200%;
+  animation: gradient-shift 3s ease infinite;
+}
+
+@keyframes gradient-shift {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+/* Dark mode tweaks for components */
+.dark .feature-card {
+  background: hsla(var(--card), 0.5);
+  backdrop-filter: blur(20px);
+}
+
+.dark .cta-primary {
+  box-shadow: 0 4px 14px 0 hsla(var(--brand-teal), 0.6), 0 0 0 1px hsla(var(--brand-teal), 0.2), inset 0 1px 0
+    hsla(0, 0%, 100%, 0.1);
+}
+
+.dark .train-glow {
+  filter: drop-shadow(0 0 40px hsla(var(--brand-teal), 0.5)) drop-shadow(0 0 80px hsla(var(--brand-teal), 0.3));
+}
+
+.dark .train-glow:hover {
+  filter: drop-shadow(0 0 50px hsla(var(--brand-teal), 0.7)) drop-shadow(0 0 100px hsla(var(--brand-teal), 0.4));
+}
+
+/* ===================================================================
+   Responsive improvements
+   =================================================================== */
+@media (max-width: 768px) {
+  .cta-primary {
+    padding: 1rem 2rem;
+    font-size: 1rem;
+  }
+
+  .feature-card {
+    padding: 1.5rem;
+  }
+
+  .spotlight-glow {
+    width: 300px;
+    height: 300px;
+  }
+
+  /* Mobile-specific train animation adjustments */
+  .animate-float {
+    animation: animate-float 8s ease-in-out infinite;
+  }
+
+  @keyframes animate-float {
+    0%,
+    100% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(-6px);
+    }
+  }
 }
