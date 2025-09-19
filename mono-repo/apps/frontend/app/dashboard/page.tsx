@@ -133,37 +133,93 @@ export default function Dashboard() {
   const maintenanceTrend = generateTrend(maintenanceTrainsets, 2).map(v => Math.round(Math.max(0, v)))
 
   // Top 13 trains based on actual health scores and fitness status
-  const getHealthScore = (trainset: Trainset): number => {
-    let score = 0
-    
-    // Fitness status scoring (40 points total)
-    if (trainset.fitness?.rollingStockFitnessStatus) score += 15
-    if (trainset.fitness?.signallingFitnessStatus) score += 15
-    if (trainset.fitness?.telecomFitnessStatus) score += 10
-    
-    // Job card status (25 points)
-    const openJobs = trainset.jobCardStatus?.openJobCards || 0
-    if (openJobs === 0) score += 25
-    else if (openJobs <= 2) score += 15
-    else if (openJobs <= 5) score += 5
-    
-    // Mileage condition (20 points)
-    const mileageKM = trainset.mileage?.totalMileageKM || 0
-    if (mileageKM < 50000) score += 20
-    else if (mileageKM < 100000) score += 15
-    else if (mileageKM < 200000) score += 10
-    else if (mileageKM < 300000) score += 5
-    
-    // Wear percentage (15 points)
-    const brakeWear = trainset.mileage?.brakepadWearPercent || 0
-    const hvacWear = trainset.mileage?.hvacWearPercent || 0
-    const avgWear = (brakeWear + hvacWear) / 2
-    if (avgWear < 25) score += 15
-    else if (avgWear < 50) score += 10
-    else if (avgWear < 75) score += 5
-    
-    return Math.min(100, score)
+  function getHealthScore(trainset: any): number {
+  // helper: normalize status (boolean/number/string) -> 0..1 or NaN if missing
+  const normalizeStatus = (v: any): number => {
+    if (v == null) return NaN
+    if (typeof v === "boolean") return v ? 1 : 0
+    if (typeof v === "number") return Math.max(0, Math.min(1, v / 100))
+    if (typeof v === "string") {
+      const s = v.trim().toLowerCase()
+      if (["ok", "good", "pass", "healthy", "nominal"].includes(s)) return 1
+      if (["warn", "degraded", "minor"].includes(s)) return 0.6
+      if (["fail", "bad", "critical", "major"].includes(s)) return 0
+      const n = parseFloat(s)
+      if (!Number.isNaN(n)) return Math.max(0, Math.min(1, n / 100))
+    }
+    return NaN
   }
+
+  // job score: fewer open jobs -> closer to 1
+  const jobScoreFromOpen = (openJobs: number | undefined, maxCap = 8) => {
+    if (openJobs == null) return NaN
+    const capped = Math.max(0, openJobs)
+    return 1 - Math.min(capped / maxCap, 1)
+  }
+
+  // mileage score: smooth decay, M50 ~ 120000km gives ~0.5
+  const mileageScoreFromKM = (km: number | undefined, M50 = 120000, k = 1.2) => {
+    if (km == null || Number.isNaN(km)) return NaN
+    const x = Math.max(0, km)
+    const val = 1 / (1 + Math.pow(x / M50, k))
+    return Math.max(0, Math.min(1, val))
+  }
+
+  // wear: average of wear percents (lower is better)
+  const wearScoreFromAvg = (avgWear: number | undefined) => {
+    if (avgWear == null || Number.isNaN(avgWear)) return NaN
+    const pct = Math.max(0, Math.min(100, avgWear))
+    return 1 - pct / 100
+  }
+
+  // extract inputs
+  const rs = normalizeStatus(trainset?.fitness?.rollingStockFitnessStatus)
+  const ss = normalizeStatus(trainset?.fitness?.signallingFitnessStatus)
+  const ts = normalizeStatus(trainset?.fitness?.telecomFitnessStatus)
+  const openJobs = trainset?.jobCardStatus?.openJobCards
+  const mileageKM = trainset?.mileage?.totalMileageKM
+  const brakeWear = trainset?.mileage?.brakepadWearPercent
+  const hvacWear = trainset?.mileage?.hvacWearPercent
+
+  // fitness: average of available fitness statuses
+  const fitnessValues = [rs, ss, ts].filter((v) => Number.isFinite(v))
+  const fitnessScore = fitnessValues.length > 0 ? fitnessValues.reduce((a, b) => a + b, 0) / fitnessValues.length : NaN
+
+  const jobScore = jobScoreFromOpen(openJobs)
+  const mileageScore = mileageScoreFromKM(mileageKM)
+  const wearInputs = [brakeWear, hvacWear].filter((v) => v != null).map(Number)
+  const avgWear = wearInputs.length > 0 ? wearInputs.reduce((a, b) => a + b, 0) / wearInputs.length : NaN
+  const wearScore = wearScoreFromAvg(avgWear)
+
+  // combine with weights (they sum to 1)
+  let wFitness = 0.30, wJob = 0.20, wMileage = 0.25, wWear = 0.25
+  const components = [
+    { val: fitnessScore, weight: wFitness },
+    { val: jobScore, weight: wJob },
+    { val: mileageScore, weight: wMileage },
+    { val: wearScore, weight: wWear },
+  ]
+
+  const present = components.filter((c) => Number.isFinite(c.val))
+  if (present.length === 0) return 50 // no data -> neutral 50
+
+  const presentWeightSum = present.reduce((s, c) => s + c.weight, 0)
+  let rawWeighted = present.reduce((sum, c) => sum + (c.val * (c.weight / presentWeightSum)), 0)
+  rawWeighted = Math.max(0, Math.min(1, rawWeighted))
+
+  // sigmoid calibration for nicer distribution
+  const sigmoid = (x: number, center = 0.5, slope = 6) => 1 / (1 + Math.exp(-slope * (x - center)))
+  const calibrated = sigmoid(rawWeighted, 0.5, 6)
+
+  // completeness factor: how many of 4 components present
+  const completeness = present.length / components.length
+  const scale = 0.6 + 0.4 * completeness // when completeness=1 => scale=1, when 0 => scale=0.6
+  const finalNormalized = calibrated * scale + (1 - scale) * 0.5
+
+  const confidence = Math.round(Math.max(0, Math.min(100, finalNormalized * 100)))
+  return confidence
+}
+
   
   // Get top 13 trains sorted by health score (descending)
   const topTrains = trainsets
@@ -377,33 +433,145 @@ export default function Dashboard() {
  * getRecommendationReason
  * - uses actual backend data for better recommendations
  */
-function getRecommendationReason(trainset: Trainset, mileageFn: (m: Trainset["mileage"]) => number): string {
-  const openJobs = trainset.jobCardStatus?.openJobCards || 0
-  const operationalStatus = trainset.operations?.operationalStatus?.toLowerCase() || trainset.status.toLowerCase()
-  const totalMileage = trainset.mileage?.totalMileageKM || 0
-  const brakeWear = trainset.mileage?.brakepadWearPercent || 0
-  const hvacWear = trainset.mileage?.hvacWearPercent || 0
-  
-  // Check fitness expiry from actual backend data
-  const rollingStockExpiry = trainset.fitness?.rollingStockFitnessExpiryDate 
-    ? daysUntil(trainset.fitness.rollingStockFitnessExpiryDate) 
-    : -1
-  const signallingExpiry = trainset.fitness?.signallingFitnessExpiryDate 
-    ? daysUntil(trainset.fitness.signallingFitnessExpiryDate) 
-    : -1
-  const telecomExpiry = trainset.fitness?.telecomFitnessExpiryDate 
-    ? daysUntil(trainset.fitness.telecomFitnessExpiryDate) 
-    : -1
-  
-  const minExpiry = Math.min(rollingStockExpiry, signallingExpiry, telecomExpiry)
-  
-  // Priority-based recommendations
-  if (minExpiry > 0 && minExpiry < 7) return "Fitness certificate expiring soon"
-  if (operationalStatus === "in_service" && openJobs === 0) return "Currently in service, no pending maintenance"
-  if (openJobs === 0 && operationalStatus !== "under_maintenance") return "No pending maintenance, ready for service"
-  if (openJobs === 1) return "1 minor job card pending"
-  if (totalMileage < 100000) return "Low mileage, optimal for service"
-  if (brakeWear < 30 && hvacWear < 30) return "Low wear condition, excellent for service"
-  if (operationalStatus === "standby") return "On standby, ready for deployment"
-  return "Good overall condition"
+function getRecommendationReason(
+  trainset: Trainset,
+  mileageFn: (m: Trainset["mileage"]) => number
+): string {
+  // helpers
+  const safeNum = (v: any, fallback = NaN) => {
+    if (v == null) return fallback
+    const n = Number(v)
+    return Number.isFinite(n) ? n : fallback
+  }
+  const clamp = (v: number, a = 0, b = 1) => Math.max(a, Math.min(b, v))
+
+  // normalize textual status
+  const normStatus = (s?: string) => (s ? s.toLowerCase().trim() : "")
+
+  // input values
+  const openJobs = safeNum(trainset.jobCardStatus?.openJobCards, 0)
+  const operationalRaw = normStatus(trainset.operations?.operationalStatus || (trainset as any).status)
+  const totalMileage = safeNum(mileageFn ? mileageFn(trainset.mileage) : trainset.mileage?.totalMileageKM, 0)
+  const brakeWear = safeNum(trainset.mileage?.brakepadWearPercent, NaN)
+  const hvacWear = safeNum(trainset.mileage?.hvacWearPercent, NaN)
+  const avgWear = Number.isFinite(brakeWear) || Number.isFinite(hvacWear)
+    ? (Number.isFinite(brakeWear) ? brakeWear : 0) + (Number.isFinite(hvacWear) ? hvacWear : 0)
+    : NaN
+  const wearCount = (Number.isFinite(brakeWear) ? 1 : 0) + (Number.isFinite(hvacWear) ? 1 : 0)
+  const wearPercent = Number.isFinite(avgWear) && wearCount > 0 ? avgWear / wearCount : NaN
+
+  // fitness expiry days (use daysUntil(date) from your codebase; if missing treat as Infinity)
+  const rollingDays = trainset.fitness?.rollingStockFitnessExpiryDate ? daysUntil(trainset.fitness.rollingStockFitnessExpiryDate) : Infinity
+  const signallingDays = trainset.fitness?.signallingFitnessExpiryDate ? daysUntil(trainset.fitness.signallingFitnessExpiryDate) : Infinity
+  const telecomDays = trainset.fitness?.telecomFitnessExpiryDate ? daysUntil(trainset.fitness.telecomFitnessExpiryDate) : Infinity
+  const fitnessDays = [rollingDays, signallingDays, telecomDays].filter((d) => Number.isFinite(d))
+  const minExpiry = fitnessDays.length ? Math.min(...fitnessDays) : Infinity
+
+  // component urgency scores (0..1 where 1 = most urgent / worst)
+  // fitness urgency: expired -> 1, <7d -> 0.95, <30 -> 0.7, <90 -> 0.4, else 0.05
+  let fitnessUrgency = 0.05
+  if (!Number.isFinite(minExpiry)) fitnessUrgency = 0.05
+  else if (minExpiry <= 0) fitnessUrgency = 1
+  else if (minExpiry <= 7) fitnessUrgency = 0.95
+  else if (minExpiry <= 30) fitnessUrgency = 0.7
+  else if (minExpiry <= 90) fitnessUrgency = 0.4
+
+  // job urgency: more open jobs => higher urgency
+  // 0 -> 0, 1-2 -> 0.35, 3-5 -> 0.7, >5 -> 1
+  let jobUrgency = 0
+  if (openJobs === 0) jobUrgency = 0
+  else if (openJobs <= 2) jobUrgency = 0.35
+  else if (openJobs <= 5) jobUrgency = 0.7
+  else jobUrgency = 1
+
+  // wear urgency: wearPercent 0..100 mapped to 0..1 (higher wear => higher urgency)
+  const wearUrgency = Number.isFinite(wearPercent) ? clamp(wearPercent / 100, 0, 1) : 0
+
+  // mileage risk: higher mileage => higher risk. Use soft power mapping
+  // below 50k => low risk; 50k-150k => medium; >250k => high
+  const mileageRisk = clamp(Math.pow(totalMileage / 180000, 0.9), 0, 1) // tuned mapping
+
+  // operational status modifiers
+  const isInService = ["in_service", "running", "active"].includes(operationalRaw)
+  const isStandby = ["standby", "idle"].includes(operationalRaw)
+  const isUnderMaint = ["under_maintenance", "maintenance"].includes(operationalRaw)
+  const isFault = ["fault", "degraded", "out_of_service"].includes(operationalRaw)
+
+  // weights for final priority score (tweakable)
+  const W = {
+    fitness: 0.35,
+    jobs: 0.25,
+    wear: 0.2,
+    mileage: 0.2,
+  }
+
+  // compute priority score (0..1) where closer to 1 means immediate attention recommended
+  const priority =
+    clamp(
+      fitnessUrgency * W.fitness +
+        jobUrgency * W.jobs +
+        wearUrgency * W.wear +
+        mileageRisk * W.mileage,
+      0,
+      1
+    )
+
+  // Build dynamic recommendation text with priority reasons
+  // Highest-priority checks first (fitness expiry/expired)
+  if (minExpiry <= 0) {
+    return `Fitness certificate expired — ground train until recertified (expired ${Math.abs(Math.round(minExpiry))} day(s) ago).`
+  }
+  if (minExpiry > 0 && minExpiry <= 7) {
+    return `Fitness certificate expiring in ${Math.round(minExpiry)} day(s) — schedule immediate inspection and recertification.`
+  }
+
+  // If operationally faulty or out_of_service, surface clearest action
+  if (isFault) {
+    return openJobs > 0
+      ? `Train reported fault & ${openJobs} open job card(s) — prioritize troubleshooting and complete job cards before returning to service.`
+      : `Train reported fault — halt service and run diagnostics; create job cards as needed.`
+  }
+
+  // Very high combined priority -> preventive or corrective maintenance
+  if (priority >= 0.85) {
+    // show contributing factors
+    const reasons: string[] = []
+    if (jobUrgency >= 0.7) reasons.push(`${openJobs} open job(s)`)
+    if (fitnessUrgency >= 0.7) reasons.push(`fitness expiring soon`)
+    if (wearUrgency >= 0.6) reasons.push(`high wear (${Number.isFinite(wearPercent) ? Math.round(wearPercent) + "%" : "N/A"})`)
+    if (mileageRisk >= 0.6) reasons.push(`high mileage (${Math.round(totalMileage)} km)`)
+    return `High priority maintenance recommended — ${reasons.join(", ")}. Schedule immediate inspection and corrective actions.`
+  }
+
+  // Medium priority cases
+  if (priority >= 0.5) {
+    const reasons: string[] = []
+    if (jobUrgency > 0) reasons.push(`${openJobs} open job(s)`)
+    if (wearUrgency >= 0.35) reasons.push(`moderate wear (${Number.isFinite(wearPercent) ? Math.round(wearPercent) + "%" : "N/A"})`)
+    if (mileageRisk >= 0.35) reasons.push(`elevated mileage (${Math.round(totalMileage)} km)`)
+    if (reasons.length)
+      return `Medium priority — ${reasons.join(", ")}. Recommend scheduled maintenance within next 2–4 weeks.`
+  }
+
+  // Low priority but with helpful notes
+  if (isInService && openJobs === 0 && (Number.isFinite(wearPercent) ? wearPercent < 30 : true) && mileageRisk < 0.35) {
+    return "Good to run — currently in service with no pending maintenance. Continue regular monitoring."
+  }
+
+  // Standby or idle trains with no jobs
+  if (isStandby && openJobs === 0) {
+    return "On standby with no pending maintenance — ready for deployment when needed."
+  }
+
+  // Fallback: summary message including key metrics
+  const pieces: string[] = []
+  if (openJobs > 0) pieces.push(`${openJobs} open job(s)`)
+  if (Number.isFinite(wearPercent)) pieces.push(`wear ${Math.round(wearPercent)}%`)
+  if (totalMileage) pieces.push(`${Math.round(totalMileage)} km mileage`)
+  if (pieces.length) {
+    return `Good overall condition but note: ${pieces.join(", ")} — monitor and schedule routine checks as required.`
+  }
+
+  return "General status: Good — no immediate actions detected. Continue routine monitoring."
 }
+
