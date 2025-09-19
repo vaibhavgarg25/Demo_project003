@@ -23,7 +23,7 @@ SHARED_STORAGE_PATH="/tmp/shared_storage"  # Local development
 
 #### Create FastAPI .env file
 ```bash
-cp apps/fastapi/.env.example apps/fastapi/.env
+cd apps/fastapi/.env.example apps/fastapi/.env
 ```
 
 Edit `apps/fastapi/.env`:
