@@ -1,50 +1,85 @@
-import type React from "react"
-import { Suspense } from "react"
-import { Sparkline } from "./charts/Sparkline"
+// components/KpiTile.tsx
+"use client";
+
+import React, { Suspense } from "react";
+import CircularProgress from "./CircularProgress";
+import { Sparkline } from "./charts/Sparkline"; // keep your existing sparkline
+// if you don't have one, render a placeholder or remove sparkline usage.
 
 interface KpiTileProps {
-  title: string
-  value: string | number
-  subtitle?: string
-  progress?: number
-  sparklineData?: number[]
-  trend?: "up" | "down" | "neutral"
+  title: string;
+  value: string | number;
+  subtitle?: string;
+  progress?: number; // 0..100
+  sparklineData?: number[];
+  trend?: "up" | "down" | "neutral";
+  // optional small note shown under the value
+  note?: string;
 }
 
-export function KpiTile({ title, value, subtitle, progress = 0, sparklineData, trend = "neutral" }: KpiTileProps) {
-  const trendColors = {
-    up: "text-green-600 dark:text-green-400",
-    down: "text-red-600 dark:text-red-400",
-    neutral: "text-muted",
-  }
+export function KpiTile({
+  title,
+  value,
+  subtitle,
+  progress = 0,
+  sparklineData,
+  trend = "neutral",
+  note,
+}: KpiTileProps) {
+  // color mapping for badge / trend
+  const trendColor =
+    trend === "up" ? "bg-teal-600 text-white" : trend === "down" ? "bg-rose-500 text-white" : "bg-gray-100 text-muted";
 
   return (
-    <div className="bg-surface border border-border rounded-xl shadow-md p-6 hover:-translate-y-1 hover:shadow-lg transition-all duration-200">
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <p className="text-sm text-muted mb-1">{title}</p>
-          <p className="text-2xl font-bold text-text mb-1">{value}</p>
-          {subtitle && <p className={`text-xs ${trendColors[trend]}`}>{subtitle}</p>}
-        </div>
+    <div className="kpi-tile">
+      <div className="kpi-top">
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="text-sm text-muted">{title}</div>
 
-        {progress > 0 && (
-          <div className="relative w-12 h-12">
-            <div className="kpi-ring w-12 h-12" style={{ "--progress": progress } as React.CSSProperties}>
-              <span className="absolute inset-0 flex items-center justify-center text-xs font-medium text-text">
-                {Math.round(progress)}%
-              </span>
+          <div className="mt-2 flex items-baseline gap-4">
+            <div className="kpi-number text-3xl md:text-4xl text-text">
+              {value}
+            </div>
+
+            {/* small subtitle/badge area */}
+            <div className="ml-auto flex items-center gap-2">
+              {typeof progress === "number" && !Number.isNaN(progress) && (
+                <div className="hidden sm:block">
+                  <CircularProgress value={progress} size={56} thickness={8} />
+                </div>
+              )}
             </div>
           </div>
-        )}
+
+          {subtitle && <div className="text-xs text-muted mt-1">{subtitle}</div>}
+        </div>
       </div>
 
-      {sparklineData && (
-        <div className="mt-4 h-8">
-          <Suspense fallback={<div className="h-8 bg-border rounded animate-pulse" />}>
-            <Sparkline data={sparklineData} />
-          </Suspense>
+      {/* bottom row: sparkline + meta */}
+      <div className="kpi-meta">
+        <div style={{ flex: 1 }}>
+          {sparklineData ? (
+            <Suspense fallback={<div style={{ height: 28 }} />}>
+              <Sparkline data={sparklineData} />
+            </Suspense>
+          ) : (
+            <div style={{ height: 28 }} />
+          )}
         </div>
-      )}
+
+        <div className="flex items-center gap-3">
+          {note && <div className="text-xs text-muted">{note}</div>}
+          {/* small trend badge */}
+          <div
+            className={`kpi-badge ${trend === "up" ? "bg-teal-600 text-white" : trend === "down" ? "bg-rose-500 text-white" : "bg-gray-100 text-muted"}`}
+            aria-hidden
+          >
+            {trend === "up" ? "▲" : trend === "down" ? "▼" : "—"}
+          </div>
+        </div>
+      </div>
     </div>
-  )
+  );
 }
+
+export default KpiTile;
