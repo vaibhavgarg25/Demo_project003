@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { CompactTable } from "@/components/CompactTable"
 import { TrainsetModal } from "@/components/TrainsetModal"
 import { fetchTrainsets, type Trainset } from "@/lib/mock-data"
+import { daysUntil } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Grid, List, Search, Settings, Check } from "lucide-react"
 import { Input } from "@/components/ui/input"
@@ -106,7 +107,7 @@ export default function TrainsetsPage() {
   })
 
   // New filters moved to top
-  const [statusFilter, setStatusFilter] = useState<"All" | "Active" | "Maintenance">("All")
+  const [statusFilter, setStatusFilter] = useState<"All" | "Active" | "Standby" | "Maintenance" | "OutOfService">("All")
   const [fitnessFilter, setFitnessFilter] = useState<"All" | "High" | "Medium" | "Low">("All")
 
   useEffect(() => {
@@ -127,22 +128,128 @@ export default function TrainsetsPage() {
     loadTrainsets()
   }, [])
 
-  // apply search + status + fitness filters
+  // Function to get status reason
+  const getStatusReason = (trainset: Trainset) => {
+    const operationalStatus = trainset.operations?.operationalStatus?.toLowerCase() || trainset.status.toLowerCase()
+    const openJobs = trainset.jobCardStatus?.openJobCards || 0
+    const brakeWear = trainset.mileage?.brakepadWearPercent || 0
+    const hvacWear = trainset.mileage?.hvacWearPercent || 0
+    
+    // Check fitness status
+    const rollingStockExpiry = trainset.fitness?.rollingStockFitnessExpiryDate 
+      ? daysUntil(trainset.fitness.rollingStockFitnessExpiryDate) 
+      : -1
+    const signallingExpiry = trainset.fitness?.signallingFitnessExpiryDate 
+      ? daysUntil(trainset.fitness.signallingFitnessExpiryDate) 
+      : -1
+    const telecomExpiry = trainset.fitness?.telecomFitnessExpiryDate 
+      ? daysUntil(trainset.fitness.telecomFitnessExpiryDate) 
+      : -1
+    
+    // Determine reason based on status and conditions
+    switch (operationalStatus) {
+      case "in_service":
+      case "active":
+        if (openJobs > 0) return `${openJobs} pending job cards`
+        return "Operational"
+        
+      case "under_maintenance":
+      case "maintenance":
+        if (brakeWear > 80) return "Brake maintenance required"
+        if (hvacWear > 80) return "HVAC maintenance required"
+        if (openJobs > 5) return "Multiple maintenance jobs"
+        if (rollingStockExpiry < 0) return "Fitness certificate expired"
+        return "Scheduled maintenance"
+        
+      case "standby":
+        if (rollingStockExpiry < 7 && rollingStockExpiry > 0) return "Fitness expiring soon"
+        if (openJobs > 0) return "Minor maintenance pending"
+        return "Ready for deployment"
+        
+      case "out_of_service":
+      case "outofservice":
+        if (rollingStockExpiry < 0) return "Fitness certificate expired"
+        if (signallingExpiry < 0) return "Signalling fitness expired"
+        if (telecomExpiry < 0) return "Telecom fitness expired"
+        if (brakeWear > 90 || hvacWear > 90) return "Critical wear condition"
+        if (openJobs > 10) return "Extensive maintenance required"
+        return "Out of service"
+        
+      default:
+        return "Status unknown"
+    }
+  }
+  const getHealthScore = (trainset: Trainset) => {
+    let score = 0
+    
+    // Fitness status scoring (40 points total)
+    if (trainset.fitness?.rollingStockFitnessStatus) score += 15
+    if (trainset.fitness?.signallingFitnessStatus) score += 15
+    if (trainset.fitness?.telecomFitnessStatus) score += 10
+    
+    // Job card status (25 points)
+    const openJobs = trainset.jobCardStatus?.openJobCards || 0
+    if (openJobs === 0) score += 25
+    else if (openJobs <= 2) score += 15
+    else if (openJobs <= 5) score += 5
+    
+    // Mileage condition (20 points)
+    const mileageKM = trainset.mileage?.totalMileageKM || 0
+    if (mileageKM < 50000) score += 20
+    else if (mileageKM < 100000) score += 15
+    else if (mileageKM < 200000) score += 10
+    else if (mileageKM < 300000) score += 5
+    
+    // Wear percentage (15 points)
+    const brakeWear = trainset.mileage?.brakepadWearPercent || 0
+    const hvacWear = trainset.mileage?.hvacWearPercent || 0
+    const avgWear = (brakeWear + hvacWear) / 2
+    if (avgWear < 25) score += 15
+    else if (avgWear < 50) score += 10
+    else if (avgWear < 75) score += 5
+    
+    return Math.min(100, score)
+  }
+
+  // apply search + status + fitness filters, then sort by health score in descending order
   const filteredTrainsets = trainsets
+    .map(trainset => ({
+      ...trainset,
+      health_score: getHealthScore(trainset)
+    }))
     .filter(
       (trainset) =>
         trainset.trainname.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        trainset.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        trainset.status.toLowerCase().includes(searchQuery.toLowerCase()),
+        trainset.trainID.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (trainset.operations?.operationalStatus || trainset.status).toLowerCase().includes(searchQuery.toLowerCase()),
     )
-    .filter((t) => (statusFilter === "All" ? true : t.status === statusFilter))
+    .filter((t) => {
+      if (statusFilter === "All") return true
+      const operationalStatus = t.operations?.operationalStatus?.toLowerCase()
+      const legacyStatus = t.status
+      
+      switch (statusFilter) {
+        case "Active":
+          return operationalStatus === "in_service" || legacyStatus === "Active"
+        case "Standby":
+          return operationalStatus === "standby" || legacyStatus === "Standby"
+        case "Maintenance":
+          return operationalStatus === "under_maintenance" || legacyStatus === "Maintenance"
+        case "OutOfService":
+          return legacyStatus === "OutOfService" || (!operationalStatus || operationalStatus === "out_of_service")
+        default:
+          return true
+      }
+    })
     .filter((t) => {
       if (fitnessFilter === "All") return true
-      const score = t.availability_confidence || 0
+      const score = t.health_score || 0
       if (fitnessFilter === "High") return score >= 80
       if (fitnessFilter === "Medium") return score >= 60 && score < 80
       return score < 60
     })
+    .sort((a, b) => b.health_score - a.health_score) // Sort by health score descending
+    .slice(0, 13) // Show only top 13 trains
 
   const handleRowClick = (trainset: Trainset) => {
     setSelectedTrainset(trainset)
@@ -153,9 +260,9 @@ export default function TrainsetsPage() {
   }
 
   const getHealthScoreColor = (score: number) => {
-    if (score >= 80) return "text-chart-3"
-    if (score >= 60) return "text-chart-4"
-    return "text-destructive"
+    if (score >= 80) return "text-emerald-600 dark:text-emerald-400"
+    if (score >= 60) return "text-yellow-600 dark:text-yellow-400"
+    return "text-red-600 dark:text-red-400"
   }
 
   if (loading) {
@@ -194,8 +301,10 @@ export default function TrainsetsPage() {
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-6 py-8 space-y-8">
         <div className="text-center space-y-4">
-          <h1 className="text-3xl font-bold text-foreground">Trainset Management</h1>
-          <p className="text-muted-foreground">Monitor and manage all trainsets in the fleet</p>
+          <h1 className="text-3xl font-bold text-foreground">Top 13 Trainsets</h1>
+          <p className="text-muted-foreground">
+            Showing top 13 trains ranked by health score (fitness status, job cards, mileage, and wear condition)
+          </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -206,21 +315,27 @@ export default function TrainsetsPage() {
           </div>
           <div className="bg-muted/40 rounded-xl p-4 text-center hover:shadow-md hover:bg-muted/60 transition-all">
             <div className="text-2xl font-bold text-chart-3">
-              {trainsets.filter((t) => t.status === "Active").length}
+              {trainsets.filter((t) => 
+                t.operations?.operationalStatus?.toLowerCase() === "in_service" || 
+                t.status === "Active"
+              ).length}
             </div>
-            <div className="text-sm text-muted-foreground">Active</div>
+            <div className="text-sm text-muted-foreground">In Service</div>
             <div className="mt-3 h-1 bg-chart-3 rounded-full"></div>
           </div>
           <div className="bg-muted/40 rounded-xl p-4 text-center hover:shadow-md hover:bg-muted/60 transition-all">
             <div className="text-2xl font-bold text-secondary">
-              {trainsets.filter((t) => t.status === "Maintenance").length}
+              {trainsets.filter((t) => 
+                t.operations?.operationalStatus?.toLowerCase() === "under_maintenance" || 
+                t.status === "Maintenance"
+              ).length}
             </div>
             <div className="text-sm text-muted-foreground">In Maintenance</div>
             <div className="mt-3 h-1 bg-secondary rounded-full"></div>
           </div>
           <div className="bg-muted/40 rounded-xl p-4 text-center hover:shadow-md hover:bg-muted/60 transition-all">
             <div className="text-2xl font-bold text-destructive">
-              {trainsets.reduce((sum, t) => sum + t.jobCardStatus.openJobCards, 0)}
+              {trainsets.reduce((sum, t) => sum + (t.jobCardStatus?.openJobCards || 0), 0)}
             </div>
             <div className="text-sm text-muted-foreground">Open Jobs</div>
             <div className="mt-3 h-1 bg-destructive rounded-full"></div>
@@ -245,7 +360,7 @@ export default function TrainsetsPage() {
 
             <div className="flex items-center gap-4">
               <span className="text-sm text-muted-foreground">
-                {filteredTrainsets.length} of {trainsets.length} trainsets
+                {filteredTrainsets.length} of {Math.min(13, trainsets.length)} top trains
               </span>
 
               <div className="flex items-center bg-background  rounded-lg p-1">
@@ -274,12 +389,14 @@ export default function TrainsetsPage() {
                 <label className="sr-only">Status</label>
                 <select
                   value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value as any)}
+                  onChange={(e) => setStatusFilter(e.target.value as "All" | "Active" | "Standby" | "Maintenance" | "OutOfService")}
                   className="h-9 px-3 rounded-md  bg-background text-sm border border-input"
                 >
                   <option value="All">All Status</option>
                   <option value="Active">Active</option>
+                  <option value="Standby">Standby</option>
                   <option value="Maintenance">Maintenance</option>
+                  <option value="OutOfService">Out of Service</option>
                 </select>
               </div>
 
@@ -434,26 +551,19 @@ export default function TrainsetsPage() {
         {viewMode === "cards" ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
           {filteredTrainsets.map((trainset) => {
-            const healthScore = trainset.availability_confidence || 0
-            const mileageData: number[] = Array.isArray((trainset as any).mileage)
-              ? ((trainset as any).mileage as number[])
-              : typeof (trainset as any).mileage === "number"
-              ? [((trainset as any).mileage as number)]
-              : [
-                  (trainset as any).mileage?.totalMileageKM ?? 0,
-                  (trainset as any).mileage?.mileageSinceLastServiceKM ?? 0,
-                  (trainset as any).mileage?.mileageBalanceVariance ?? 0,
-                ]
-            const mileageTotal: number =
-              typeof (trainset as any).mileage === "number"
-                ? ((trainset as any).mileage as number)
-                : (trainset as any).mileage?.totalMileageKM ?? 0
+            const healthScore = trainset.health_score || 0
+            const mileageData: number[] = [
+              trainset.mileage?.totalMileageKM || 0,
+              trainset.mileage?.mileageSinceLastServiceKM || 0,
+              trainset.mileage?.mileageBalanceVariance || 0,
+            ]
+            const mileageTotal: number = trainset.mileage?.totalMileageKM || 0
             const formatKm = (n: number) =>
               n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M km` : n >= 1_000 ? `${(n / 1_000).toFixed(1)}k km` : `${n} km`
         
             return (
               <div
-                key={trainset.id}
+                key={trainset.trainID}
                 onClick={() => handleRowClick(trainset)}
                 className="bg-gradient-to-br from-background via-card to-background/80 rounded-3xl shadow-md hover:shadow-2xl transition-all duration-300 cursor-pointer overflow-hidden hover:scale-[1.02] group"
               >
@@ -469,16 +579,16 @@ export default function TrainsetsPage() {
                     <div className="flex flex-col gap-2 items-end">
                       <Badge
                         className={`text-xs px-2 py-1 font-medium rounded-md shadow-sm ${
-                          trainset.status === "Active"
+                          (trainset.operations?.operationalStatus?.toLowerCase() === "in_service" || trainset.status === "Active")
                             ? "bg-emerald-100 text-emerald-700"
-                            : trainset.status === "Maintenance"
+                            : (trainset.operations?.operationalStatus?.toLowerCase() === "under_maintenance" || trainset.status === "Maintenance")
                             ? "bg-amber-100 text-amber-700"
                             : "bg-red-100 text-red-700"
                         }`}
                       >
-                        {trainset.status}
+                        {trainset.operations?.operationalStatus || trainset.status}
                       </Badge>
-                      {trainset.jobCardStatus.openJobCards > 0 && (
+                      {(trainset.jobCardStatus?.openJobCards || 0) > 0 && (
                         <div className="text-xs text-red-600 font-semibold bg-red-100 px-2 py-1 rounded-md shadow-sm">
                           ⚠️ Job Card: Open
                         </div>
@@ -493,7 +603,7 @@ export default function TrainsetsPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="text-sm font-semibold text-foreground">Health Score</div>
-                      <div className="text-xs text-muted-foreground">Overall system health</div>
+                      <div className="text-xs text-muted-foreground">Based on fitness, jobs, mileage & wear</div>
                     </div>
                     <CircularProgress value={healthScore} size={70} />
                   </div>
@@ -504,16 +614,16 @@ export default function TrainsetsPage() {
                       <div className="space-y-2 text-center">
                         <div className="text-xs font-medium text-muted-foreground">Availability</div>
                         <div className="flex flex-col items-center gap-2">
-                          <Progress value={trainset.availability_confidence || 0} className="h-2 w-20 rounded-full" />
+                          <Progress value={trainset.availability_confidence || healthScore} className="h-2 w-20 rounded-full" />
                           <span className="text-sm font-semibold text-foreground">
-                            {trainset.availability_confidence || 0}%
+                            {trainset.availability_confidence || healthScore}%
                           </span>
                         </div>
                       </div>
 
                       {/* Weekly Mileage */}
                       <div className="space-y-2 text-center">
-                        <div className="text-xs font-medium text-muted-foreground">Weekly Mileage</div>
+                        <div className="text-xs font-medium text-muted-foreground">Total Mileage</div>
                         <div className="flex items-center justify-center gap-3">
                           <MiniChart data={mileageData} color="bg-chart-1" />
                           <span className="text-sm font-semibold text-foreground">
@@ -527,17 +637,17 @@ export default function TrainsetsPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="rounded-xl p-4 text-center bg-gradient-to-br from-muted/30 to-muted/10 shadow-inner">
                       <div className="text-lg font-bold text-foreground flex items-center justify-center gap-1">
-                        📍 {trainset.stabling_position || "N/A"}
+                        📍 {trainset.stabling?.bayPositionID || trainset.stabling_position || "N/A"}
                       </div>
-                      <div className="text-xs text-muted-foreground">Location</div>
+                      <div className="text-xs text-muted-foreground">Bay Position</div>
                     </div>
                     <div className="rounded-xl p-4 text-center bg-gradient-to-br from-muted/30 to-muted/10 shadow-inner">
                       <div
                         className={`text-lg font-bold flex items-center justify-center gap-1 ${
-                          trainset.jobCardStatus.openJobCards > 0 ? "text-red-600" : "text-emerald-600"
+                          (trainset.jobCardStatus?.openJobCards || 0) > 0 ? "text-red-600" : "text-emerald-600"
                         }`}
                       >
-                        🛠 {trainset.jobCardStatus.openJobCards}
+                        🛠 {trainset.jobCardStatus?.openJobCards || 0}
                       </div>
                       <div className="text-xs text-muted-foreground">Open Jobs</div>
                     </div>
@@ -548,25 +658,48 @@ export default function TrainsetsPage() {
                     <div className="rounded-lg p-3 bg-muted/20 backdrop-blur-sm shadow-sm">
                       <div className="text-sm font-bold text-foreground">
                         {(() => {
-                          const hvacWear = trainset.mileage.hvacWearPercent ?? 0
+                          const hvacWear = trainset.mileage?.hvacWearPercent || 0
                           const hvacHealth = Math.max(0, Math.min(100, 100 - Number(hvacWear)))
                           return `${hvacHealth.toFixed(1)}%`
                         })()}
                       </div>
-                      <div className="text-xs text-muted-foreground">HVAC</div>
+                      <div className="text-xs text-muted-foreground">HVAC Health</div>
                     </div>
                     <div className="rounded-lg p-3 bg-muted/20 backdrop-blur-sm shadow-sm">
                       <div className="text-sm font-bold text-amber-500">
-                        {`${(trainset.mileage.brakepadWearPercent ?? 0)}%`}
+                        {`${(trainset.mileage?.brakepadWearPercent || 0)}%`}
                       </div>
                       <div className="text-xs text-muted-foreground">Brake Wear</div>
                     </div>
                     <div className="rounded-lg p-3 bg-muted/20 backdrop-blur-sm shadow-sm">
-                      <div className="text-sm font-bold text-emerald-500">
-                        {`${(trainset.branding.exposureHoursAccrued ?? 0)}h`}
+                      <div className={`text-sm font-bold ${
+                        trainset.fitness?.rollingStockFitnessStatus && trainset.fitness?.signallingFitnessStatus && trainset.fitness?.telecomFitnessStatus
+                          ? "text-emerald-500"
+                          : "text-red-500"
+                      }`}>
+                        {trainset.fitness?.rollingStockFitnessStatus && trainset.fitness?.signallingFitnessStatus && trainset.fitness?.telecomFitnessStatus
+                          ? "✓ All"
+                          : "⚠ Issues"
+                        }
                       </div>
-                      <div className="text-xs text-muted-foreground">Branding</div>
+                      <div className="text-xs text-muted-foreground">Fitness Certs</div>
                     </div>
+                  </div>
+                  
+                  {/* Status Reason */}
+                  <div className="text-center pt-4 border-t border-border">
+                    <p className="text-xs text-muted-foreground mb-2">Status Reason</p>
+                    <p className={`text-sm font-medium ${
+                      (trainset.operations?.operationalStatus?.toLowerCase() || trainset.status.toLowerCase()).includes('service') 
+                        ? 'text-green-600 dark:text-green-400' 
+                        : (trainset.operations?.operationalStatus?.toLowerCase() || trainset.status.toLowerCase()).includes('maintenance')
+                        ? 'text-orange-600 dark:text-orange-400'
+                        : (trainset.operations?.operationalStatus?.toLowerCase() || trainset.status.toLowerCase()).includes('standby')
+                        ? 'text-yellow-600 dark:text-yellow-400'
+                        : 'text-red-600 dark:text-red-400'
+                    }`}>
+                      {getStatusReason(trainset)}
+                    </p>
                   </div>
                 </div>
         

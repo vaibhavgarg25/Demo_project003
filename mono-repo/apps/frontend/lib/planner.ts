@@ -30,45 +30,61 @@ export interface PlannerRun {
 }
 
 export function generatePlan(trainsets: Trainset[], params: PlannerParams): PlannerResult[] {
-  // Filter out excluded statuses
-  const eligibleTrainsets = trainsets.filter((trainset) => !params.excludeStatuses.includes(trainset.status))
+  // Filter out excluded statuses - check both legacy status and operational status
+  const eligibleTrainsets = trainsets.filter((trainset) => {
+    const operationalStatus = trainset.operations?.operationalStatus || trainset.status
+    return !params.excludeStatuses.includes(trainset.status) && 
+           !params.excludeStatuses.includes(operationalStatus)
+  })
 
-  // Score each trainset
+  // Score each trainset using actual backend data
   const scoredResults = eligibleTrainsets.map((trainset) => {
     let score = 100 // Base score
     let confidence = 100
     const reasons: string[] = []
 
-    // Fitness certificate scoring
-    const fitnessExpiry = daysUntil(trainset.fitness_certificate.expiry_date)
-    if (fitnessExpiry < 0) {
+    // Fitness certificate scoring using actual fitness data
+    const rollingStockExpiry = trainset.fitness?.rollingStockFitnessExpiryDate 
+      ? daysUntil(trainset.fitness.rollingStockFitnessExpiryDate) 
+      : -1
+    const signallingExpiry = trainset.fitness?.signallingFitnessExpiryDate 
+      ? daysUntil(trainset.fitness.signallingFitnessExpiryDate) 
+      : -1
+    const telecomExpiry = trainset.fitness?.telecomFitnessExpiryDate 
+      ? daysUntil(trainset.fitness.telecomFitnessExpiryDate) 
+      : -1
+    
+    const minExpiry = Math.min(rollingStockExpiry, signallingExpiry, telecomExpiry)
+    
+    if (minExpiry < 0) {
       score -= 50
       confidence -= 40
       reasons.push("Fitness certificate expired")
-    } else if (fitnessExpiry < params.minFitnessDays) {
+    } else if (minExpiry < params.minFitnessDays) {
       score -= 40
       confidence -= 30
-      reasons.push(`Fitness expires in ${fitnessExpiry} days`)
-    } else if (fitnessExpiry > 180) {
+      reasons.push(`Fitness expires in ${minExpiry} days`)
+    } else if (minExpiry > 180) {
       score += 5
       reasons.push("Long-term fitness validity")
     }
 
-    // Job cards scoring
-    const openJobCards = trainset.job_cards.filter((j) => j.status === "open").length
+    // Job cards scoring using actual backend data
+    const openJobCards = trainset.jobCardStatus?.openJobCards || 0
     if (openJobCards === 0) {
-      score += 10
-      confidence += 5
+      score += 15
+      confidence += 10
       reasons.push("No pending maintenance")
     } else {
-      score -= openJobCards * 10
-      confidence -= openJobCards * 8
-      reasons.push(`${openJobCards} open job card${openJobCards > 1 ? "s" : ""}`)
+      score -= openJobCards * 8
+      confidence -= openJobCards * 6
+      reasons.push(`${openJobCards} open job card${openJobCards > 1 ? "s" : ""}`) 
     }
 
-    // Mileage scoring
-    const avgMileage = trainsets.reduce((sum, t) => sum + t.mileage, 0) / trainsets.length
-    const mileageRatio = trainset.mileage / avgMileage
+    // Mileage scoring using actual mileage data
+    const trainMileage = trainset.mileage?.totalMileageKM || 0
+    const avgMileage = eligibleTrainsets.reduce((sum, t) => sum + (t.mileage?.totalMileageKM || 0), 0) / eligibleTrainsets.length
+    const mileageRatio = avgMileage > 0 ? trainMileage / avgMileage : 1
 
     if (params.prioritizeHighMileage) {
       if (mileageRatio > 1.2) {
@@ -79,9 +95,9 @@ export function generatePlan(trainsets: Trainset[], params: PlannerParams): Plan
         reasons.push("Low mileage")
       }
     } else {
-      if (mileageRatio > 1.3) {
-        score -= 15
-        confidence -= 10
+      if (mileageRatio > 1.5) {
+        score -= 20
+        confidence -= 15
         reasons.push("Very high mileage")
       } else if (mileageRatio < 0.9) {
         score += 10
@@ -89,47 +105,62 @@ export function generatePlan(trainsets: Trainset[], params: PlannerParams): Plan
       }
     }
 
-    // Cleaning schedule requirement
+    // Wear condition scoring
+    const brakeWear = trainset.mileage?.brakepadWearPercent || 0
+    const hvacWear = trainset.mileage?.hvacWearPercent || 0
+    const avgWear = (brakeWear + hvacWear) / 2
+    
+    if (avgWear < 25) {
+      score += 10
+      reasons.push("Low wear condition")
+    } else if (avgWear > 75) {
+      score -= 20
+      confidence -= 15
+      reasons.push("High wear condition")
+    }
+
+    // Cleaning schedule requirement using actual cleaning data
     if (params.requireCleaningSlots) {
-      if (trainset.cleaning_schedule === "Daily") {
+      if (trainset.cleaning?.cleaningRequired) {
         score += 5
-        reasons.push("Daily cleaning schedule")
-      } else if (trainset.cleaning_schedule === "None") {
-        score -= 20
-        confidence -= 15
-        reasons.push("No cleaning schedule")
+        reasons.push("Cleaning scheduled")
+      } else {
+        score -= 10
+        confidence -= 5
+        reasons.push("No cleaning scheduled")
       }
     }
 
-    // Branding status
-    if (trainset.branding_status === "Complete") {
+    // Branding status using actual branding data
+    if (trainset.branding?.brandingActive) {
       score += 5
-      reasons.push("Branding complete")
-    } else if (trainset.branding_status === "Expired") {
-      score -= 15
-      confidence -= 10
-      reasons.push("Branding expired")
+      reasons.push("Active branding campaign")
     }
 
-    // Status-specific adjustments
-    switch (trainset.status) {
-      case "Active":
-        score += 10
-        confidence += 5
-        reasons.push("Currently active")
+    // Status-specific adjustments using operational status
+    const operationalStatus = trainset.operations?.operationalStatus?.toLowerCase() || trainset.status.toLowerCase()
+    switch (operationalStatus) {
+      case "active":
+      case "in_service":
+        score += 15
+        confidence += 10
+        reasons.push("Currently in service")
         break
-      case "Standby":
-        score += 5
+      case "standby":
+        score += 8
+        confidence += 5
         reasons.push("Ready for activation")
         break
-      case "Maintenance":
-        score -= 30
-        confidence -= 25
+      case "maintenance":
+      case "under_maintenance":
+        score -= 35
+        confidence -= 30
         reasons.push("Under maintenance")
         break
-      case "OutOfService":
-        score -= 50
-        confidence -= 40
+      case "outofservice":
+      case "out_of_service":
+        score -= 60
+        confidence -= 50
         reasons.push("Out of service")
         break
     }
@@ -153,10 +184,10 @@ export function generatePlan(trainsets: Trainset[], params: PlannerParams): Plan
   // Sort by score (descending) and select top trainsets
   const sortedResults = scoredResults.sort((a, b) => b.score - a.score)
 
-  // Select top trainsets up to maxTrains limit
+  // Select top trainsets up to maxTrains limit with minimum threshold
   let selectedCount = 0
   sortedResults.forEach((result) => {
-    if (selectedCount < params.maxTrains && result.score >= 50) {
+    if (selectedCount < params.maxTrains && result.score >= 40) {
       result.selected = true
       selectedCount++
     }

@@ -74,10 +74,16 @@ const aliasToCanonical: Record<string, string> = {
   stablingsequenceorder: "stablingSequenceOrder",
   // Operations
   operationalstatus: "operationalStatus",
+  reasonforstatus: "reasonForStatus",
+  rank: "rank",
+  score: "score",
+  rlpriority: "rl_priority",
+  rl_priority: "rl_priority",
 };
 
-const normalizeRow = (raw: CSVRow): CSVRow => {
-  const normalized: CSVRow = {};
+const normalizeRow = (raw: CSVRow, rowIndex: number): CSVRow => {
+  const normalized: CSVRow = { _rowOrder: rowIndex.toString() }; // Preserve row order
+  
   for (const [k, v] of Object.entries(raw)) {
     const nk = normalizeHeader(k);
     // First try exact alias match
@@ -116,6 +122,11 @@ const normalizeRow = (raw: CSVRow): CSVRow => {
       else if (contains("shunting") && contains("moves")) canonical = "shuntingMovesRequired";
       else if (contains("stabling") && contains("sequence")) canonical = "stablingSequenceOrder";
       else if (contains("operational") && contains("status")) canonical = "operationalStatus";
+      else if (contains("reason") && contains("status")) canonical = "reasonForStatus";
+      else if (nk === "rank") canonical = "rank";
+      else if (nk === "score") canonical = "score";
+      else if (contains("rl") && contains("priority")) canonical = "rl_priority";
+      else if (nk === "rlpriority") canonical = "rl_priority"; // Additional catch for "RL Priority"
     }
     normalized[canonical] = String(v ?? "").trim();
   }
@@ -156,6 +167,7 @@ const normalizeRow = (raw: CSVRow): CSVRow => {
 
 interface CSVRow {
   [key: string]: string;
+  _rowOrder?: string; // To maintain order
 }
 
 interface UploadStatus {
@@ -192,7 +204,8 @@ export const processCSV = async (
     }
 
     // Normalize headers/values from Excel-style CSVs before inserting
-    const normalizedRows = results.map(normalizeRow);
+    // Pass row index to maintain order
+    const normalizedRows = results.map((row, index) => normalizeRow(row, index));
 
     // Expose ONLY first 25 parsed rows in status for inspection via GET /upload-status/:jobId
     if (uploadStatusMap[jobId]) {
@@ -202,7 +215,7 @@ export const processCSV = async (
       };
     }
 
-    // Process and insert data
+    // Process and insert data maintaining CSV order
     const processResults = await insertDataIntoModels(normalizedRows, jobId, uploadStatusMap);
 
     if (uploadStatusMap[jobId]) {
@@ -248,13 +261,23 @@ const insertDataIntoModels = async (
   };
 
   try {
-    for (let i = 0; i < data.length; i++) {
-      const row = data[i];
+    // Sort by row order to maintain CSV sequence
+    const sortedData = data.sort((a, b) => {
+      const orderA = parseInt(a._rowOrder || '0');
+      const orderB = parseInt(b._rowOrder || '0');
+      return orderA - orderB;
+    });
+
+    // First, clear existing data if this is a fresh upload (optional - remove if you want to keep existing data)
+    // await prisma.train.deleteMany({});
+
+    for (let i = 0; i < sortedData.length; i++) {
+      const row = sortedData[i];
       
       if (!row) continue;
       
       try {
-        // Create or update Train
+        // Create or update Train (maintaining order is crucial here)
         if (row.trainname && row.trainID) {
           const train = await prisma.train.upsert({
             where: { trainID: row.trainID },
@@ -264,7 +287,8 @@ const insertDataIntoModels = async (
             },
             create: {
               trainname: row.trainname,
-              trainID: row.trainID
+              trainID: row.trainID,
+              current_date: new Date()
             }
           });
           results.trains++;
@@ -277,10 +301,10 @@ const insertDataIntoModels = async (
         }
 
         // Update progress
-        const progress = 25 + Math.floor((i / data.length) * 70);
+        const progress = 25 + Math.floor((i / sortedData.length) * 70);
         if (uploadStatusMap[jobId]) {
           uploadStatusMap[jobId].progress = progress;
-          uploadStatusMap[jobId].message = `Processing row ${i + 1} of ${data.length}`;
+          uploadStatusMap[jobId].message = `Processing row ${i + 1} of ${sortedData.length}`;
         }
 
       } catch (rowError) {
@@ -304,8 +328,10 @@ const insertDataIntoModels = async (
 };
 
 const processRelatedModels = async (row: CSVRow, trainId: string, results: any) => {
-  // Fitness Certificates
-  if (row.rollingStockFitnessStatus !== undefined || row.signallingFitnessStatus !== undefined) {
+  // Fitness Certificates - only create if at least one fitness field has data
+  if (row.rollingStockFitnessStatus !== undefined && row.rollingStockFitnessStatus !== '' || 
+      row.signallingFitnessStatus !== undefined && row.signallingFitnessStatus !== '' ||
+      row.telecomFitnessStatus !== undefined && row.telecomFitnessStatus !== '') {
     await prisma.fitnessCertificates.upsert({
       where: { trainId },
       update: {
@@ -329,8 +355,8 @@ const processRelatedModels = async (row: CSVRow, trainId: string, results: any) 
     results.fitness++;
   }
 
-  // Job Card Status
-  if (row.jobCardStatus !== undefined) {
+  // Job Card Status - only create if jobCardStatus has data
+  if (row.jobCardStatus !== undefined && row.jobCardStatus !== '') {
     await prisma.jobCardStatus.upsert({
       where: { trainId },
       update: {
@@ -350,8 +376,8 @@ const processRelatedModels = async (row: CSVRow, trainId: string, results: any) 
     results.jobCards++;
   }
 
-  // Branding
-  if (row.brandingActive !== undefined) {
+  // Branding - only create if brandingActive has data
+  if (row.brandingActive !== undefined && row.brandingActive !== '') {
     await prisma.branding.upsert({
       where: { trainId },
       update: {
@@ -373,8 +399,8 @@ const processRelatedModels = async (row: CSVRow, trainId: string, results: any) 
     results.branding++;
   }
 
-  // Mileage
-  if (row.totalMileageKM !== undefined) {
+  // Mileage - only create if totalMileageKM has data
+  if (row.totalMileageKM !== undefined && row.totalMileageKM !== '') {
     await prisma.mileage.upsert({
       where: { trainId },
       update: {
@@ -396,8 +422,8 @@ const processRelatedModels = async (row: CSVRow, trainId: string, results: any) 
     results.mileage++;
   }
 
-  // Cleaning
-  if (row.cleaningRequired !== undefined) {
+  // Cleaning - only create if cleaningRequired has data
+  if (row.cleaningRequired !== undefined && row.cleaningRequired !== '') {
     await prisma.cleaning.upsert({
       where: { trainId },
       update: {
@@ -419,8 +445,8 @@ const processRelatedModels = async (row: CSVRow, trainId: string, results: any) 
     results.cleaning++;
   }
 
-  // Stabling
-  if (row.bayPositionID !== undefined) {
+  // Stabling - only create if bayPositionID has data
+  if (row.bayPositionID !== undefined && row.bayPositionID !== '') {
     await prisma.stabling.upsert({
       where: { trainId },
       update: {
@@ -438,16 +464,47 @@ const processRelatedModels = async (row: CSVRow, trainId: string, results: any) 
     results.stabling++;
   }
 
-  // Operations
-  if (row.operationalStatus !== undefined) {
+  // Operations - Updated to include new fields: rank, score, reasonForStatus, rl_priority
+  if (row.operationalStatus !== undefined && row.operationalStatus !== '') {
     await prisma.operations.upsert({
       where: { trainId },
       update: {
-        operationalStatus: row.operationalStatus as any
+        operationalStatus: row.operationalStatus as any,
+        reasonForStatus: row.reasonForStatus || null,
+        rank: row.rank ? parseInt(row.rank) : null,
+        score: row.score ? parseInt(row.score) : null,
+        rl_priority: row.rl_priority ? parseInt(row.rl_priority) : null
       },
       create: {
         trainId,
-        operationalStatus: row.operationalStatus as any
+        operationalStatus: row.operationalStatus as any,
+        reasonForStatus: row.reasonForStatus || null,
+        rank: row.rank ? parseInt(row.rank) : null,
+        score: row.score ? parseInt(row.score) : null,
+        rl_priority: row.rl_priority ? parseInt(row.rl_priority) : null
+      }
+    });
+    results.operations++;
+  } else if (row.rank !== undefined && row.rank !== '' || 
+             row.score !== undefined && row.score !== '' || 
+             row.reasonForStatus !== undefined && row.reasonForStatus !== '' ||
+             row.rl_priority !== undefined && row.rl_priority !== '') {
+    // Create operations record even if operationalStatus is not provided but other fields are
+    await prisma.operations.upsert({
+      where: { trainId },
+      update: {
+        reasonForStatus: row.reasonForStatus || null,
+        rank: row.rank ? parseInt(row.rank) : null,
+        score: row.score ? parseInt(row.score) : null,
+        rl_priority: row.rl_priority ? parseInt(row.rl_priority) : null
+      },
+      create: {
+        trainId,
+        operationalStatus: 'in_service', // Default value if not provided
+        reasonForStatus: row.reasonForStatus || null,
+        rank: row.rank ? parseInt(row.rank) : null,
+        score: row.score ? parseInt(row.score) : null,
+        rl_priority: row.rl_priority ? parseInt(row.rl_priority) : null
       }
     });
     results.operations++;

@@ -374,7 +374,7 @@ function transformToLegacyFormat(train: MemorizedTrain): Trainset {
  */
 export async function fetchTrainsets(): Promise<Trainset[]> {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_CLIENT_URL || "http://localhost:8000"
+    const baseUrl = process.env.NEXT_PUBLIC_CLIENT_URL || "http://localhost:3000"
     const token = typeof window !== "undefined" ? localStorage.getItem("token") : null
 
 
@@ -551,23 +551,50 @@ function generateJobCardsFromBackend(backendTrain: any) {
 function calculatePriorityScore(backendTrain: any): number {
   let score = 0
 
-  if (backendTrain.fitness?.rollingStockFitnessStatus) score += 30
-  if ((backendTrain.jobCardStatus?.openJobCards || 0) === 0) score += 30
-  if (backendTrain.branding?.brandingActive) score += 20
-  if (backendTrain.cleaning?.cleaningRequired) score += 20
+  // Fitness status scoring (40 points total)
+  if (backendTrain.fitness?.rollingStockFitnessStatus) score += 15
+  if (backendTrain.fitness?.signallingFitnessStatus) score += 15
+  if (backendTrain.fitness?.telecomFitnessStatus) score += 10
+  
+  // Job card status (25 points)
+  const openJobs = backendTrain.jobCardStatus?.openJobCards || 0
+  if (openJobs === 0) score += 25
+  else if (openJobs <= 2) score += 15
+  else if (openJobs <= 5) score += 5
+  
+  // Mileage condition (20 points)
+  const mileageKM = backendTrain.mileage?.totalMileageKM || 0
+  if (mileageKM < 50000) score += 20
+  else if (mileageKM < 100000) score += 15
+  else if (mileageKM < 200000) score += 10
+  else if (mileageKM < 300000) score += 5
+  
+  // Wear percentage (15 points)
+  const brakeWear = backendTrain.mileage?.brakepadWearPercent || 0
+  const hvacWear = backendTrain.mileage?.hvacWearPercent || 0
+  const avgWear = (brakeWear + hvacWear) / 2
+  if (avgWear < 25) score += 15
+  else if (avgWear < 50) score += 10
+  else if (avgWear < 75) score += 5
 
-  return score
+  return Math.min(100, score)
 }
 
 function calculateAvailabilityConfidence(backendTrain: any): number {
   let confidence = 0
 
-  if (backendTrain.fitness?.rollingStockFitnessStatus) confidence += 25
+  // Fitness certificates (75 points total)
+  if (backendTrain.fitness?.rollingStockFitnessStatus) confidence += 30
   if (backendTrain.fitness?.signallingFitnessStatus) confidence += 25
-  if (backendTrain.fitness?.telecomFitnessStatus) confidence += 25
-  if ((backendTrain.jobCardStatus?.openJobCards || 0) === 0) confidence += 25
+  if (backendTrain.fitness?.telecomFitnessStatus) confidence += 20
+  
+  // Operational readiness (25 points)
+  const openJobs = backendTrain.jobCardStatus?.openJobCards || 0
+  if (openJobs === 0) confidence += 25
+  else if (openJobs <= 2) confidence += 15
+  else if (openJobs <= 5) confidence += 5
 
-  return confidence
+  return Math.min(100, confidence)
 }
 
 
