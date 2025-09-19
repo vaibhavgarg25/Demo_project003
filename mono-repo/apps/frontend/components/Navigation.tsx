@@ -79,25 +79,39 @@ export function Navigation() {
   }
 
   return (
-    <nav className="fixed top-0 left-0 z-50 w-full ">
+    // removed the border-b to eliminate the white line; kept backdrop blur + translucent background
+    <nav className="fixed top-0 left-0 z-50 w-full backdrop-blur-md bg-background/80">
       <div className="flex h-16 items-center justify-between px-8">
-        {/* Logo */}
-        <Link href="/" className="font-bold text-lg tracking-widest text-foreground">
+        {/* removed train logo block per request */}
+        <Link
+          href="/"
+          className="flex items-center gap-3 font-bold text-lg tracking-widest text-foreground hover:text-teal-400 transition-colors"
+        >
           KOCHI METRO RAIL
         </Link>
 
         {/* Desktop Navigation */}
-        <div className="hidden md:flex items-center gap-10">
+        <div className="hidden md:flex items-center gap-8">
           {navItems.map((item) => {
             const isActive = pathname === item.href
             return (
+              // using group + after pseudo element to create a thin underline on hover/active
               <Link
                 key={item.href}
                 href={item.href}
-                className={`text-sm font-mono tracking-wider transition-colors 
-                  ${isActive ? "text-primary font-semibold" : "text-foreground hover:text-primary"}`}
+                className={`relative group px-2 py-2 text-sm font-medium tracking-wider transition-colors ${
+                  isActive ? "text-teal-400 font-semibold" : "text-foreground hover:text-teal-400"
+                }`}
               >
-                [ {item.label} ]
+                <span className="relative z-10">{item.label}</span>
+                <span
+                  className={`
+                    absolute left-1/2 transform -translate-x-1/2 bottom-1 h-[3px] w-0 rounded-full bg-teal-400 transition-all duration-200
+                    group-hover:w-[60%]
+                    ${isActive ? "w-[60%]" : ""}
+                  `}
+                  aria-hidden
+                />
               </Link>
             )
           })}
@@ -106,7 +120,7 @@ export function Navigation() {
             variant="ghost"
             size="sm"
             onClick={cycleTheme}
-            className="text-foreground hover:text-primary hover:bg-muted transition-colors"
+            className="text-foreground hover:text-teal-400 hover:bg-teal-400/10 transition-colors rounded-full"
             title={getThemeTitle()}
           >
             {getThemeIcon()}
@@ -118,9 +132,9 @@ export function Navigation() {
                 variant="outline"
                 size="sm"
                 onClick={handleLogout}
-                className="flex items-center gap-2 bg-transparent"
+                className="flex items-center gap-2 bg-transparent border-red-400/30 text-red-400 hover:border-red-400 hover:bg-red-400/10 transition-all duration-300 rounded-full"
               >
-                <LogOut className="size-4" />
+                <LogOut className="w-4 h-4" />
                 SIGN OUT
               </Button>
             </div>
@@ -131,11 +145,11 @@ export function Navigation() {
         <Sheet open={isOpen} onOpenChange={setIsOpen}>
           <SheetTrigger asChild className="md:hidden">
             <Button variant="ghost" size="sm" className="text-foreground">
-              <Menu className="size-5" />
+              <Menu className="w-5 h-5" />
             </Button>
           </SheetTrigger>
           <SheetContent side="right" className="w-[280px] flex flex-col justify-between">
-            <div className="flex flex-col gap-6 mt-8">
+            <div className="flex flex-col gap-6 mt-8 px-4">
               {navItems.map((item) => {
                 const isActive = pathname === item.href
                 return (
@@ -143,10 +157,19 @@ export function Navigation() {
                     key={item.href}
                     href={item.href}
                     onClick={() => setIsOpen(false)}
-                    className={`text-base font-mono tracking-wider transition-colors 
-                      ${isActive ? "text-primary font-semibold" : "text-foreground hover:text-primary"}`}
+                    className={`relative group px-4 py-2 rounded-full text-base font-medium tracking-wider transition-colors ${
+                      isActive ? "text-teal-400 font-semibold" : "text-foreground hover:text-teal-400"
+                    }`}
                   >
-                    [ {item.label} ]
+                    <span className="relative z-10">{item.label}</span>
+                    <span
+                      className={`
+                        absolute left-1/2 transform -translate-x-1/2 bottom-2 h-[3px] w-0 rounded-full bg-teal-400 transition-all duration-200
+                        group-hover:w-[60%]
+                        ${isActive ? "w-[60%]" : ""}
+                      `}
+                      aria-hidden
+                    />
                   </Link>
                 )
               })}
@@ -154,24 +177,24 @@ export function Navigation() {
               <Button
                 variant="ghost"
                 onClick={cycleTheme}
-                className="text-foreground hover:text-primary justify-start px-0"
+                className="text-foreground hover:text-teal-400 justify-start px-4 rounded-full"
               >
                 {getThemeIcon()}
-                <span className="ml-2 font-mono tracking-wider">[ THEME ]</span>
+                <span className="ml-2 font-medium tracking-wider">THEME</span>
               </Button>
             </div>
 
             {isLoggedIn && (
-              <div className="flex flex-col gap-3 border-t pt-4">
+              <div className="flex flex-col gap-3 border-t pt-4 px-4">
                 <Button
                   variant="outline"
                   onClick={() => {
                     handleLogout()
                     setIsOpen(false)
                   }}
-                  className="flex items-center gap-2"
+                  className="flex items-center gap-2 border-red-400/30 text-red-400 hover:border-red-400 hover:bg-red-400/10 rounded-full"
                 >
-                  <LogOut className="size-4" />
+                  <LogOut className="w-4 h-4" />
                   SIGN OUT
                 </Button>
               </div>
