@@ -1,8 +1,7 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-@import "tailwindcss";
-@import "tw-animate-css";
+
 
 @custom-variant dark (&:is(.dark *));
 
@@ -121,13 +120,15 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
-@layer base {
-  * {
-    @apply border-border outline-ring/50;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
+/* Removed @layer base and moved styles to work with Tailwind v4 */
+* {
+  border-color: hsl(var(--border));
+  outline-color: hsl(var(--ring) / 0.5);
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
 }
 
 /* ===================================================================
@@ -213,6 +214,15 @@
   animation: animate-float 6s ease-in-out infinite;
 }
 
+/* Added animation delay utility class */
+.animation-delay-1000 {
+  animation-delay: 1s;
+}
+
+.animation-delay-2000 {
+  animation-delay: 2s;
+}
+
 /* Train float + glow effect */
 .train-glow {
   filter: drop-shadow(0 0 30px hsla(var(--brand-teal), 0.4)) drop-shadow(0 0 60px hsla(var(--brand-teal), 0.2));
@@ -221,6 +231,22 @@
 
 .train-glow:hover {
   filter: drop-shadow(0 0 40px hsla(var(--brand-teal), 0.6)) drop-shadow(0 0 80px hsla(var(--brand-teal), 0.3));
+}
+
+/* Enhanced train container with glass morphism */
+.train-container {
+  position: relative;
+  padding: 2rem;
+  
+  
+  
+  transition: all 0.3s ease;
+}
+
+.train-container:hover {
+  background: rgba(255, 255, 255, 0.08);
+  
+  transform: scale(1.02);
 }
 
 /* Feature cards */
@@ -325,6 +351,10 @@
   /* Mobile-specific train animation adjustments */
   .animate-float {
     animation: animate-float 8s ease-in-out infinite;
+  }
+
+  .train-container {
+    padding: 1rem;
   }
 
   @keyframes animate-float {
