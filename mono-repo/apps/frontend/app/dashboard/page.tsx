@@ -1,4 +1,6 @@
-// apps/dashboard/page.tsx
+
+"use client";
+
 "use client";
 
 import React, { useEffect, useState, Suspense } from "react";
@@ -8,6 +10,137 @@ import { BayView } from "@/components/BayView";
 import CircularProgress from "@/components/CircularProgress";
 import { fetchTrainsets, type Trainset } from "@/lib/mock-data";
 import { daysUntil } from "@/lib/utils";
+// use absolute alias to match rest of file
+import { Sidebar, SidebarBody, SidebarLink } from "@/components/Sidebar";
+
+import { IconBrandTabler } from "@tabler/icons-react";
+import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
+// import all lucide icons you use
+import { BarChart3Icon, Calendar, Train, History, Settings, Upload } from "lucide-react";
+
+export function SidebarDemo() {
+  const links = [
+    {
+      label: "Dashboard",
+      href: "/dashboard",
+      icon: (
+        <IconBrandTabler className="h-5 w-5 shrink-0 text-neutral-700 dark:text-neutral-200" />
+      ),
+    },
+    {
+      label: "Profile",
+      href: "/dashboard/trainsets",
+      icon: (
+        <Train className="h-5 w-5 shrink-0 text-neutral-700 dark:text-neutral-200" />
+      ),
+    },
+    {
+      label: "Planner",
+      href: "/dashboard/planner",
+      icon: (
+        <Calendar className="h-5 w-5 shrink-0 text-neutral-700 dark:text-neutral-200" />
+      ),
+    },
+    {
+      label: "Simulation",
+      href: "/dashboard/simulation",
+      icon: (
+        <BarChart3Icon className="h-5 w-5 shrink-0 text-neutral-700 dark:text-neutral-200" />
+      ),
+    },
+    {
+  label: "History",
+  href: "/dashboard/history",
+  icon: (
+    <History className="h-5 w-5 shrink-0 text-neutral-700 dark:text-neutral-200" />
+  ),
+},
+{
+  label: "Settings",
+  href: "/dashboard/settings",
+  icon: (
+    <Settings className="h-5 w-5 shrink-0 text-neutral-700 dark:text-neutral-200" />
+  ),
+},
+{
+  label: "Upload",
+  href: "/dashboard/csv-template",
+  icon: (
+    <Upload className="h-5 w-5 shrink-0 text-neutral-700 dark:text-neutral-200" />
+  ),
+},
+  ];
+  const [open, setOpen] = useState(false);
+  return (
+    <div
+      className={cn(
+        "mx-auto flex w-full max-w-7xl flex-1 flex-col overflow-hidden rounded-md border border-neutral-200 bg-gray-100 md:flex-row dark:border-neutral-700 dark:bg-neutral-800",
+        "h-[60vh]", // for your use case, use `h-screen` instead of `h-[60vh]`
+      )}
+    >
+      <Sidebar open={open} setOpen={setOpen}>
+        <SidebarBody className="justify-between gap-10">
+          <div className="flex flex-1 flex-col overflow-x-hidden overflow-y-auto">
+            {open ? <Logo /> : <LogoIcon />}
+            <div className="mt-8 flex flex-col gap-2">
+              {links.map((link, idx) => (
+                <SidebarLink key={idx} link={link} />
+              ))}
+            </div>
+          </div>
+          <div>
+            <SidebarLink
+              link={{
+                label: "Manu Arora",
+                href: "#",
+                icon: (
+                  <img
+                    src="https://assets.aceternity.com/manu.png"
+                    className="h-7 w-7 shrink-0 rounded-full"
+                    width={50}
+                    height={50}
+                    alt="Avatar"
+                  />
+                ),
+              }}
+            />
+          </div>
+        </SidebarBody>
+      </Sidebar>
+      <Dashboard />
+    </div>
+  );
+}
+export const Logo = () => {
+  return (
+    <a
+      href="#"
+      className="relative z-20 flex items-center space-x-2 py-1 text-sm font-normal text-black"
+    >
+      <div className="h-5 w-6 shrink-0 rounded-tl-lg rounded-tr-sm rounded-br-lg rounded-bl-sm bg-black dark:bg-white" />
+      <motion.span
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="font-medium whitespace-pre text-black dark:text-white"
+      >
+        Kochi Metro Rail
+      </motion.span>
+    </a>
+  );
+};
+export const LogoIcon = () => {
+  return (
+    <a
+      href="#"
+      className="relative z-20 flex items-center space-x-2 py-1 text-sm font-normal text-black"
+    >
+      <div className="h-5 w-6 shrink-0 rounded-tl-lg rounded-tr-sm rounded-br-lg rounded-bl-sm bg-black dark:bg-white" />
+    </a>
+  );
+};
+
+
 
 export default function Dashboard() {
   const [trainsets, setTrainsets] = useState<Trainset[]>([]);
@@ -295,7 +428,7 @@ export default function Dashboard() {
         {/* Top Trains */}
         <div className="lg:col-span-2 space-y-6">
           <h2 className="text-lg font-semibold text-text">
-            Top 13 Trains by Health
+            Recommended for Commissioning
           </h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
@@ -325,7 +458,7 @@ export default function Dashboard() {
           {/* Recommendations */}
           <div>
             <h3 className="text-lg font-semibold text-text mt-2">
-              Recommended for Service
+              Recommended for Commissioning
             </h3>
             <div className="space-y-3 mt-3">
               {topRecommendations.map((r, i) => (
