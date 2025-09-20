@@ -28,7 +28,7 @@ const Logo = ({ open }: { open: boolean }) => (
     <div className="h-5 w-6 shrink-0 rounded-tl-lg rounded-tr-sm rounded-br-lg rounded-bl-sm bg-black dark:bg-white" />
     {open && (
       <span className="font-medium whitespace-pre text-black dark:text-white">
-        Acet Labs
+        Kochi Metro Rail
       </span>
     )}
   </a>
