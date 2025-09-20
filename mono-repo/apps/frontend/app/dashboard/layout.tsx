@@ -60,23 +60,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 ))}
               </div>
             </div>
-            <div>
-              <SidebarLink
-                link={{
-                  label: "User",
-                  href: "#",
-                  icon: (
-                    <img
-                      src="https://assets.aceternity.com/manu.png"
-                      className="h-7 w-7 shrink-0 rounded-full"
-                      width={50}
-                      height={50}
-                      alt="Avatar"
-                    />
-                  ),
-                }}
-              />
-            </div>
+            
           </SidebarBody>
         </Sidebar>
 
