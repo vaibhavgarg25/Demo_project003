@@ -17,15 +17,18 @@ import {
   History,
   Settings,
   Upload,
+  Home as HomeIcon,
+  Home,
 } from "lucide-react";
 
 // Logo component
 const Logo = ({ open }: { open: boolean }) => (
   <a
-    href="#"
+    href="/"
+    
     className="relative z-20 flex items-center space-x-2 py-1 text-sm font-normal text-black"
   >
-    <div className="h-5 w-6 shrink-0 rounded-tl-lg rounded-tr-sm rounded-br-lg rounded-bl-sm bg-black dark:bg-white" />
+    <Home className="h-6 w-6 text-black dark:text-white" />
     {open && (
       <span className="font-medium whitespace-pre text-black dark:text-white">
         Kochi Metro Rail
@@ -38,13 +41,13 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(true);
 
   const links = [
-    { label: "Dashboard", href: "/dashboard", icon: <IconBrandTabler className="h-5 w-5" /> },
-    { label: "Profile", href: "/dashboard/trainsets", icon: <Train className="h-5 w-5" /> },
-    { label: "Planner", href: "/dashboard/planner", icon: <Calendar className="h-5 w-5" /> },
-    { label: "Simulation", href: "/dashboard/simulation", icon: <BarChart3Icon className="h-5 w-5" /> },
-    { label: "History", href: "/dashboard/history", icon: <History className="h-5 w-5" /> },
-    { label: "Settings", href: "/dashboard/settings", icon: <Settings className="h-5 w-5" /> },
-    { label: "Upload", href: "/dashboard/csv-template", icon: <Upload className="h-5 w-5" /> },
+    { label: "Dashboard", href: "/dashboard", icon: <IconBrandTabler className="h-5 w-5 text-black dark:text-white" /> },
+    { label: "Train", href: "/dashboard/trainsets", icon: <Train className="h-5 w-5 text-black dark:text-white" /> },
+    { label: "Planner", href: "/dashboard/planner", icon: <Calendar className="h-5 w-5 text-black dark:text-white" /> },
+    { label: "Simulation", href: "/dashboard/simulation", icon: <BarChart3Icon className="h-5 w-5 text-black dark:text-white" /> },
+    { label: "History", href: "/dashboard/history", icon: <History className="h-5 w-5 text-black dark:text-white" /> },
+    { label: "Settings", href: "/dashboard/settings", icon: <Settings className="h-5 w-5 text-black dark:text-white" /> },
+    { label: "Upload", href: "/dashboard/csv-template", icon: <Upload className="h-5 w-5 text-black dark:text-white" /> },
   ];
 
   return (

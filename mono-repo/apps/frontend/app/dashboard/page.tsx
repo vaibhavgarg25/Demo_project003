@@ -27,7 +27,7 @@ export function SidebarDemo() {
       ),
     },
     {
-      label: "Profile",
+      label: "Train",
       href: "/dashboard/trainsets",
       icon: (
         <Train className="h-5 w-5 shrink-0 text-neutral-700 dark:text-neutral-200" />
@@ -73,7 +73,7 @@ export function SidebarDemo() {
   return (
     <div
       className={cn(
-        "mx-auto flex w-full max-w-7xl flex-1 flex-col overflow-hidden rounded-md border border-neutral-200 bg-gray-100 md:flex-row dark:border-neutral-700 dark:bg-neutral-800",
+        "flex h-screen w-full bg-[var(--bg)] text-[var(--fg)]",
         "h-[60vh]", // for your use case, use `h-screen` instead of `h-[60vh]`
       )}
     >
@@ -315,7 +315,7 @@ export default function Dashboard() {
     totalTrainsets > 0
       ? Math.round(
           trainsets.reduce(
-            (s, t) => s + (t.mileage?.totalMileageKM || 0),
+            (s, t) => s + (t.mileage?.mileageSinceLastServiceKM || 0),
             0
           ) / totalTrainsets
         )
@@ -353,57 +353,39 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen app-gradient p-6 space-y-8">
       {/* KPI Row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <KpiTile
-          title="Fleet Availability"
-          value={`${availabilityRate}%`}
-          subtitle={`${inServiceTrains}/${totalTrainsets} in service`}
-          progress={availabilityRate}
-          sparklineData={[availabilityRate]}
-          trend={
-            availabilityRate >= 85
-              ? "up"
-              : availabilityRate >= 75
-              ? "neutral"
-              : "down"
-          }
-        />
-        <KpiTile
-          title="Average Mileage"
-          value={`${avgMileage.toLocaleString()}`}
-          subtitle="km per trainset"
-          sparklineData={[avgMileage]}
-          trend={
-            avgMileage < 200000
-              ? "up"
-              : avgMileage < 350000
-              ? "neutral"
-              : "down"
-          }
-        />
-        <KpiTile
-          title="In Maintenance"
-          value={maintenanceTrainsets}
-          subtitle={`${
-            totalTrainsets > 0
-              ? Math.round((maintenanceTrainsets / totalTrainsets) * 100)
-              : 0
-          }% of fleet`}
-          progress={
-            totalTrainsets > 0
-              ? Math.round((maintenanceTrainsets / totalTrainsets) * 100)
-              : 0
-          }
-          sparklineData={[maintenanceTrainsets]}
-          trend="down"
-        />
-        <KpiTile
-          title="Open Job Cards"
-          value={totalOpenJobs}
-          subtitle={`${fitnessExpiringSoon} fitness expiring`}
-          trend={totalOpenJobs > 10 ? "up" : "neutral"}
-        />
-      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+  <KpiTile
+    title="Fleet Availability"
+    value={`${availabilityRate}%`}
+    subtitle={`${inServiceTrains}/${totalTrainsets} in service`}
+    progress={availabilityRate}
+    sparklineData={[10, 20, 34, 28, 52, 46]}
+    trend={availabilityRate >= 85 ? "up" : availabilityRate >= 75 ? "neutral" : "down"}
+    action={<button className="cta-primary px-3 py-1 text-sm">Manage</button>}
+  />
+  <KpiTile
+    title="Average Mileage"
+    value={`${avgMileage.toLocaleString()}`}
+    subtitle="km per trainset"
+    sparklineData={[180000, 185000, 182000, 188000, 187655]}
+    trend={avgMileage < 200000 ? "up" : avgMileage < 350000 ? "neutral" : "down"}
+  />
+  <KpiTile
+    title="In Maintenance"
+    value={maintenanceTrainsets}
+    subtitle={`${totalTrainsets > 0 ? Math.round((maintenanceTrainsets / totalTrainsets) * 100) : 0}% of fleet`}
+    progress={Math.min(100, (maintenanceTrainsets / Math.max(1, totalTrainsets)) * 100)}
+    trend="down"
+  />
+  <KpiTile
+    title="Open Job Cards"
+    value={totalOpenJobs}
+    subtitle={`${fitnessExpiringSoon} fitness expiring`}
+    sparklineData={[0, 3, 6, 8, 5, 12]}
+    trend={totalOpenJobs > 10 ? "up" : "neutral"}
+  />
+</div>
+
 
       {/* Main */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -437,33 +419,11 @@ export default function Dashboard() {
             ))}
           </div>
 
-          {/* Recommendations */}
-          <div>
-            <h3 className="text-lg font-semibold text-text mt-2">
-              Recommended for Commissioning
-            </h3>
-            <div className="space-y-3 mt-3">
-              {topRecommendations.map((r, i) => (
-                <RecommendationCard
-                  key={i}
-                  trainset={r.trainset}
-                  reason={r.reason}
-                  confidence={r.confidence}
-                />
-              ))}
-            </div>
-          </div> 
+          
         </div>
 
         {/* Right Column */}
         <div className="space-y-6">
-          <div className="glass-card p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="font-medium text-text">Bay View</div>
-              <div className="text-xs text-muted">Live</div>
-            </div>
-            <BayView trainsets={trainsets} layout="2x8" />
-          </div>
 
           <div className="glass-card p-4">
             <div className="font-medium">Fleet Distribution</div>
@@ -489,14 +449,17 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="glass-card p-4">
-            <div className="font-medium">Alerts</div>
-            <div className="mt-2 text-sm text-muted">
-              {topRecommendations.length
-                ? `${topRecommendations.length} high-priority recommendations`
-                : "No critical alerts"}
+          <div className="glass-card p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="font-medium text-text">Bay View</div>
+              <div className="text-xs text-muted">Live</div>
             </div>
+            <BayView trainsets={trainsets} layout="2x8" />
           </div>
+
+          
+
+          
         </div>
       </div>
     </div>
