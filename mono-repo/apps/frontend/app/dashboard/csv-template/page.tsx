@@ -2,10 +2,30 @@
 
 import React, { useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { CheckCircle, XCircle, AlertTriangle, CloudUpload, Download, Upload, FileSpreadsheet } from "lucide-react"
-import { FaFileCsv, FaCheckCircle, FaExclamationTriangle, FaCloudUploadAlt, FaDownload } from "react-icons/fa"
+import {
+  CheckCircle,
+  XCircle,
+  AlertTriangle,
+  CloudUpload,
+  Download,
+  Upload,
+  FileSpreadsheet,
+} from "lucide-react"
+import {
+  FaFileCsv,
+  FaCheckCircle,
+  FaExclamationTriangle,
+  FaCloudUploadAlt,
+  FaDownload,
+} from "react-icons/fa"
 
 /* -------------------------
    Types
@@ -19,7 +39,7 @@ type ValidationResult = {
 }
 
 /* -------------------------
-   Helpers
+   Helpers & Constants
    ------------------------- */
 const normalizeHeader = (h: string) =>
   h
@@ -27,39 +47,133 @@ const normalizeHeader = (h: string) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "")
 
+/**
+ * Lightweight CSV parser that supports:
+ * - quoted fields (with double quote escaping)
+ * - commas inside quotes
+ * - CRLF or LF line endings
+ *
+ * Returns array of rows (array of strings).
+ */
+function parseCSV(text: string): string[][] {
+  const rows: string[][] = []
+  let i = 0
+  const len = text.length
+  let row: string[] = []
+  let cur = ""
+  let inQuotes = false
+
+  while (i < len) {
+    const ch = text[i]
+
+    if (inQuotes) {
+      if (ch === '"') {
+        // lookahead for escaped double quote
+        if (i + 1 < len && text[i + 1] === '"') {
+          cur += '"'
+          i += 2
+          continue
+        }
+        // closing quote
+        inQuotes = false
+        i++
+        continue
+      }
+      // normal character inside quotes
+      cur += ch
+      i++
+      continue
+    }
+
+    // not in quotes
+    if (ch === '"') {
+      inQuotes = true
+      i++
+      continue
+    }
+
+    if (ch === ",") {
+      row.push(cur)
+      cur = ""
+      i++
+      continue
+    }
+
+    // handle CRLF / LF / CR
+    if (ch === "\r") {
+      // check for \r\n
+      row.push(cur)
+      cur = ""
+      rows.push(row)
+      row = []
+      if (i + 1 < len && text[i + 1] === "\n") i += 2
+      else i++
+      continue
+    }
+
+    if (ch === "\n") {
+      row.push(cur)
+      cur = ""
+      rows.push(row)
+      row = []
+      i++
+      continue
+    }
+
+    cur += ch
+    i++
+  }
+
+  // push remaining
+  if (inQuotes) {
+    // Unterminated quotes — still push what we have
+    row.push(cur)
+    rows.push(row)
+  } else {
+    if (cur !== "" || row.length > 0) {
+      row.push(cur)
+      rows.push(row)
+    }
+  }
+
+  return rows
+}
+
 const REQUIRED_HEADERS = ["trainid", "trainname"]
-const KNOWN_OPTIONAL = new Set([
-  "rollingstockfitnessstatus",
-  "signallingfitnessstatus",
-  "telecomfitnessstatus",
-  "rollingstockfitnessexpirydate",
-  "signallingfitnessexpirydate",
-  "telecomfitnessexpirydate",
-  "jobcardstatus",
-  "openjobcards",
-  "closedjobcards",
-  "lastjobcardupdate",
-  "brandingactive",
-  "brandcampaignid",
-  "exposurehoursaccrued",
-  "exposurehourstarget",
-  "exposuredailyquota",
-  "totalmileagekm",
-  "mileagesincelastservicekm",
-  "mileagebalancevariance",
-  "brakepadwearpercent",
-  "hvacwearpercent",
-  "cleaningrequired",
-  "cleaningslotstatus",
-  "bayoccupancyidc",
-  "cleaningcrewassigned",
-  "lastcleaneddate",
-  "baypositionid",
-  "shuntingmovesrequired",
-  "stablingsequenceorder",
-  "operationalstatus",
-  "reasonforstatus",
-])
+const KNOWN_OPTIONAL = new Set(
+  [
+    "rollingstockfitnessstatus",
+    "signallingfitnessstatus",
+    "telecomfitnessstatus",
+    "rollingstockfitnessexpirydate",
+    "signallingfitnessexpirydate",
+    "telecomfitnessexpirydate",
+    "jobcardstatus",
+    "openjobcards",
+    "closedjobcards",
+    "lastjobcardupdate",
+    "brandingactive",
+    "brandcampaignid",
+    "exposurehoursaccrued",
+    "exposurehourstarget",
+    "exposuredailyquota",
+    "totalmileagekm",
+    "mileagesincelastservicekm",
+    "mileagebalancevariance",
+    "brakepadwearpercent",
+    "hvacwearpercent",
+    "cleaningrequired",
+    "cleaningslotstatus",
+    "bayoccupancyidc",
+    "cleaningcrewassigned",
+    "lastcleaneddate",
+    "baypositionid",
+    "shuntingmovesrequired",
+    "stablingsequenceorder",
+    "operationalstatus",
+    "reasonforstatus",
+  ].map((s) => s.toLowerCase())
+)
 
 const TEMPLATE_HEADERS = [
   "trainID",
@@ -77,12 +191,95 @@ const TEMPLATE_HEADERS = [
   "operationalStatus",
 ]
 
+/* -------------------------
+   Small presentational PreviewTable (inline)
+   ------------------------- */
+function PreviewTable({
+  headers,
+  rows,
+  maxVisible = 6,
+}: {
+  headers?: string[] | null
+  rows?: string[][] | null
+  maxVisible?: number
+}) {
+  if (!rows || rows.length === 0) {
+    return (
+      <div className="rounded-lg border border-border bg-muted/5 p-4 text-sm text-muted-foreground">
+        <div className="flex items-center justify-between">
+          <div className="text-xs font-medium">👀 Preview</div>
+          <div className="text-xs text-muted-foreground">No rows to display</div>
+        </div>
+        <p className="mt-2 text-sm">Upload a CSV to see a preview here.</p>
+      </div>
+    )
+  }
+
+  const visible = rows.slice(0, maxVisible)
+
+  return (
+    <div className="rounded-lg border border-border bg-background shadow-sm">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-border">
+        <div>
+          <div className="text-xs text-muted-foreground">👀 Preview</div>
+          <div className="text-sm font-medium">
+            Showing {Math.min(rows.length, maxVisible)} of {rows.length} rows • {rows[0]?.length ?? 0} columns
+          </div>
+        </div>
+        <div className="text-xs text-muted-foreground">Tip: values truncated for display</div>
+      </div>
+
+      <div className="overflow-auto max-h-64">
+        <table className="min-w-full table-auto text-sm">
+          <caption className="sr-only">Data preview table</caption>
+          {headers && (
+            <thead className="bg-muted sticky top-0 z-10">
+              <tr>
+                {headers.map((h, idx) => (
+                  <th
+                    key={idx}
+                    scope="col"
+                    className="whitespace-nowrap px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                  >
+                    {h || `Column ${idx + 1}`}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+          )}
+
+          <tbody>
+            {visible.map((row, i) => (
+              <tr key={i} className={i % 2 === 0 ? "bg-transparent" : "bg-muted/30"}>
+                {row.map((cell, j) => (
+                  <td key={j} className="max-w-[260px] px-3 py-2 align-top text-sm" title={cell ?? ""}>
+                    <div className="truncate text-[0.92rem] leading-snug">{cell ?? "—"}</div>
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex items-center justify-between px-4 py-2 text-xs text-muted-foreground border-t border-border">
+        <div>Preview limited to first {maxVisible} rows</div>
+        <div className="hidden sm:block">Download to open full data in Sheets / Excel</div>
+      </div>
+    </div>
+  )
+}
+
+/* -------------------------
+   Main component
+   ------------------------- */
 export default function CSVTemplatePage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const [file, setFile] = useState<File | null>(null)
   const [validation, setValidation] = useState<ValidationResult | null>(null)
   const [previewRows, setPreviewRows] = useState<string[][] | null>(null)
+  const [previewHeaders, setPreviewHeaders] = useState<string[] | null>(null)
   const [isSending, setIsSending] = useState(false)
   const [sendSuccess, setSendSuccess] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
@@ -109,7 +306,7 @@ export default function CSVTemplatePage() {
       "in_service",
     ]
     const csv = [TEMPLATE_HEADERS.join(","), sampleRow.join(",")].join("\n")
-    const blob = new Blob([csv], { type: "text/csv" })
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
@@ -124,24 +321,43 @@ export default function CSVTemplatePage() {
      Validation & Preview
      ------------------------- */
   const validateAndPreview = (text: string): ValidationResult => {
-    const lines = text.split(/\r?\n/).filter(Boolean)
-    if (lines.length === 0) {
-      return { isValid: false, errors: ["❌ File is empty."], warnings: [], missing: REQUIRED_HEADERS, extra: [] }
+    // parse with robust parser
+    const rows = parseCSV(text).filter((r) => r.length > 0 && r.some((c) => c !== ""))
+
+    if (rows.length === 0) {
+      const result = {
+        isValid: false,
+        errors: ["❌ File is empty."],
+        warnings: [],
+        missing: REQUIRED_HEADERS,
+        extra: [],
+      }
+      setValidation(result)
+      setPreviewRows(null)
+      setPreviewHeaders(null)
+      return result
     }
 
-    const headers = lines[0].split(",").map((h) => h.trim())
+    const headers = rows[0].map((h) => h.trim())
     const normalized = headers.map(normalizeHeader)
 
     const missing = REQUIRED_HEADERS.filter((r) => !normalized.includes(r))
-    const extra = normalized.filter((n) => !REQUIRED_HEADERS.includes(n) && !KNOWN_OPTIONAL.has(n))
+    const extra = normalized.filter(
+      (n) => !REQUIRED_HEADERS.includes(n) && !KNOWN_OPTIONAL.has(n)
+    )
 
     const errors: string[] = []
     const warnings: string[] = []
-    if (missing.length) errors.push(`⚠️ Missing required: ${missing.join(", ")}`)
-    if (extra.length) warnings.push(`ℹ️ Unrecognized columns (ignored): ${extra.join(", ")}`)
 
-    const previews = lines.slice(1, 6).map((ln) => ln.split(",").map((c) => c.trim()))
+    if (missing.length) errors.push(`Missing required: ${missing.join(", ")}`)
+    if (extra.length) warnings.push(`Unrecognized columns (will be ignored): ${extra.join(", ")}`)
+
+    // Prepare preview rows (slice first 6 data rows)
+    const dataRows = rows.slice(1)
+    const previews = dataRows.slice(0, 6).map((r) => r.map((c) => c ?? ""))
+
     setPreviewRows(previews.length ? previews : null)
+    setPreviewHeaders(headers)
 
     const result: ValidationResult = {
       isValid: missing.length === 0,
@@ -154,26 +370,36 @@ export default function CSVTemplatePage() {
     return result
   }
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0] ?? null
-    setFile(f)
-    setSendSuccess(false)
-    setSendError(null)
+  const resetFileUI = () => {
+    setFile(null)
+    setValidation(null)
+    setPreviewRows(null)
+    setPreviewHeaders(null)
     setShowConfirm(false)
     setConfirmChecked(false)
-    setPreviewRows(null)
-    if (!f) {
-      setValidation(null)
-      return
-    }
+    setSendError(null)
+    setSendSuccess(false)
+    if (fileInputRef.current) fileInputRef.current.value = ""
+  }
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0] ?? null
+    resetFileUI()
+    if (!f) return
+    setFile(f)
 
     if (!f.name.toLowerCase().endsWith(".csv")) {
-      setValidation({ isValid: false, errors: ["❌ Please upload a .csv file."], warnings: [] })
+      const v: ValidationResult = { isValid: false, errors: ["❌ Please upload a .csv file."], warnings: [], missing: [], extra: [] }
+      setValidation(v)
       return
     }
 
-    const text = await f.text()
-    validateAndPreview(text)
+    try {
+      const text = await f.text()
+      validateAndPreview(text)
+    } catch (err: any) {
+      setValidation({ isValid: false, errors: ["❌ Failed to read file."], warnings: [], missing: [], extra: [] })
+    }
   }
 
   const openFileBrowser = () => fileInputRef.current?.click()
@@ -196,6 +422,7 @@ export default function CSVTemplatePage() {
     if (!file || !validation?.isValid || !confirmChecked) return
     setIsSending(true)
     setSendError(null)
+    setSendSuccess(false)
     try {
       const form = new FormData()
       form.append("file", file)
@@ -206,16 +433,15 @@ export default function CSVTemplatePage() {
         headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: form,
       })
-      if (!res.ok) throw new Error(await res.text())
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(text || "Upload failed")
+      }
       setSendSuccess(true)
+      // clear local UI after short delay (keeps success message visible)
       setTimeout(() => {
-        setFile(null)
-        setValidation(null)
-        setPreviewRows(null)
-        setShowConfirm(false)
-        setConfirmChecked(false)
-        if (fileInputRef.current) fileInputRef.current.value = ""
-      }, 1800)
+        resetFileUI()
+      }, 1200)
     } catch (err: any) {
       setSendError(err?.message || "Upload failed")
     } finally {
@@ -251,7 +477,9 @@ export default function CSVTemplatePage() {
           <CardContent className="space-y-4">
             <div className="flex flex-wrap gap-2">
               {TEMPLATE_HEADERS.slice(0, 5).map((h) => (
-                <Badge key={h} variant="secondary">{h}</Badge>
+                <Badge key={h} variant="secondary">
+                  {h}
+                </Badge>
               ))}
               <Badge variant="outline">+{TEMPLATE_HEADERS.length - 5} more</Badge>
             </div>
@@ -277,9 +505,33 @@ export default function CSVTemplatePage() {
               className="hidden"
               onChange={handleFileChange}
             />
-            <Button onClick={openFileBrowser} variant="outline" className="w-full">
-              <Upload className="w-4 h-4 mr-2" /> Choose File
-            </Button>
+            <div className="flex gap-2">
+              <Button onClick={openFileBrowser} variant="outline" className="flex-1">
+                <Upload className="w-4 h-4 mr-2" /> Choose File
+              </Button>
+              <Button
+                onClick={() => {
+                  if (file) {
+                    // quick download of the uploaded file for inspection
+                    const url = URL.createObjectURL(file)
+                    const a = document.createElement("a")
+                    a.href = url
+                    a.download = file.name
+                    a.click()
+                    URL.revokeObjectURL(url)
+                  } else {
+                    downloadTemplate()
+                  }
+                }}
+                variant="ghost"
+                className="w-36"
+                title={file ? "Download uploaded file" : "Download template"}
+              >
+                <FaDownload className="mr-2" />
+                {file ? "Save" : "Template"}
+              </Button>
+            </div>
+
             <div className="text-sm text-muted-foreground">
               {file ? <span className="text-foreground">📄 {file.name}</span> : "No file selected"}
             </div>
@@ -296,7 +548,7 @@ export default function CSVTemplatePage() {
                     <XCircle className="mt-0.5" /> <span>{validation.errors.join(", ")}</span>
                   </div>
                 )}
-                {validation.warnings.length > 0 && (
+                {validation.warnings && validation.warnings.length > 0 && (
                   <div className="text-yellow-600 flex gap-2 items-start mt-2">
                     <FaExclamationTriangle className="mt-0.5" />
                     <span>{validation.warnings.join(", ")}</span>
@@ -306,28 +558,23 @@ export default function CSVTemplatePage() {
             )}
 
             {/* Preview */}
-            {previewRows && (
-              <div className="p-3 rounded-lg bg-background border border-border">
-                <div className="text-xs text-muted-foreground mb-1">👀 Preview (first {previewRows.length} rows)</div>
-                <table className="table-auto w-full text-sm">
-                  <tbody>
-                    {previewRows.map((row, i) => (
-                      <tr key={i} className={i % 2 ? "bg-muted/50" : ""}>
-                        {row.map((cell, j) => (
-                          <td key={j} className="px-2 py-1">{cell || "—"}</td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            <div>
+              <PreviewTable headers={previewHeaders ?? undefined} rows={previewRows ?? undefined} />
+            </div>
 
             <div className="flex gap-2">
-              <Button onClick={handleOpenConfirm} disabled={!validation?.isValid} className="flex-1 bg-primary text-primary-foreground">
+              <Button
+                onClick={handleOpenConfirm}
+                disabled={!validation?.isValid}
+                className="flex-1 bg-primary text-primary-foreground"
+              >
                 🚀 Upload & Confirm
               </Button>
-              <Button onClick={() => { setFile(null); setValidation(null); setPreviewRows(null); if (fileInputRef.current) fileInputRef.current.value = "" }} variant="outline">
+              <Button
+                onClick={resetFileUI}
+                variant="outline"
+                className="w-28"
+              >
                 Reset
               </Button>
             </div>
@@ -354,6 +601,7 @@ export default function CSVTemplatePage() {
                 checked={confirmChecked}
                 onChange={(e) => setConfirmChecked(e.target.checked)}
                 className="h-4 w-4"
+                aria-label="Confirm file correctness"
               />
               <span className="text-sm">✅ I confirm this file is correct.</span>
             </label>
