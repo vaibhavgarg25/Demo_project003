@@ -1,8 +1,6 @@
 
 "use client";
 
-"use client";
-
 import React, { useEffect, useState, Suspense } from "react";
 import { KpiTile } from "@/components/KpiTile";
 import { RecommendationCard } from "@/components/RecommendationCard";

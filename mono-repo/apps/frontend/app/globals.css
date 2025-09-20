@@ -23,6 +23,8 @@
   /* small helpers */
   --radius: 12px;
   --brand-teal: 180 100% 50%;
+
+  --progress-text-color: #0f172a
 }
 
 /* Dark mode tokens (class-based) */
@@ -36,6 +38,7 @@
   --glass-blur: 10px;
   --brand-teal: 180 90% 45%;
   --muted: #9aa3ad;
+  --progress-text-color: #f8fafc
 }
 
 /* App-level colors mapped to theme */

@@ -76,8 +76,7 @@ export default function CircularProgress({
         <span
           className="font-semibold"
           style={{
-            // choose a visible color that works in light/dark; you can swap class names if you use design tokens
-            color: "var(--text-on-glass, #0f172a)",
+            color: "var(--progress-text-color)",
             fontSize: Math.max(12, Math.round(size * 0.26)),
           }}
         >
