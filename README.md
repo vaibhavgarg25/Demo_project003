@@ -1,19 +1,75 @@
-## 📌 Problem Statement 
-**SIH25081** : AI-Driven Train Induction Planning & Scheduling for Kochi Metro Rail Limited (KMRL).  
+# 🚆 KMRL_SIH25081 – AI-Driven Train Induction Planning & Scheduling
 
-Design a system to automate and optimize the induction and 
-scheduling of trains for Kochi Metro, balancing maintenance, 
-safety, service quality, and operational efficiency.
+## 📌 Problem Statement
+**SIH25081**: *AI-Driven Train Induction Planning & Scheduling for Kochi Metro Rail Limited (KMRL).*  
 
-## ✅ Solution
+Metro operations are highly dynamic, requiring **precise planning** to ensure that trains are inducted into service on time while meeting **safety, maintenance, and passenger demand requirements**.  
+Currently, much of this process is **manual or semi-automated**, leading to challenges such as:  
 
-- Centralized platform for real-time train status monitoring (operational, maintenance, cleaning, safety).
+- Unoptimized scheduling, causing idle time or delays  
+- Difficulty in balancing **maintenance windows** with operational requirements  
+- Manual monitoring of **fitness checks, cleaning, and safety compliance**  
+- Limited use of **data-driven forecasting** to anticipate issues before they occur  
 
-- Automated alerts for expiring fitness checks, maintenance due, and cleaning schedules.
+As the network grows, these challenges become more complex, directly impacting **service quality, passenger satisfaction, and operational efficiency**.  
 
-- Predictive analytics using ML for maintenance forecasting & downtime reduction.
+---
 
-- User-friendly dashboards with role-based access for railway staff.
+## 🎯 Project Vision
+This project aims to build an **intelligent scheduling system** that automates and optimizes train induction for KMRL.  
+By leveraging **AI, ML, and optimization techniques**, the system will act as a **decision-support platform** for metro authorities, ensuring:  
+
+- **High service reliability** – trains available when and where they are needed  
+- **Safety & compliance** – no train enters service without necessary checks  
+- **Operational efficiency** – reduced downtime and resource wastage  
+- **Future-ready scalability** – adaptable to larger networks and datasets  
+
+---
+
+## ✅ Solution Overview
+
+Our solution is designed as a **smart, AI-powered decision-support platform** for Kochi Metro, transforming how train induction and scheduling are managed.  
+It combines **real-time monitoring, predictive analytics, and optimization algorithms** to ensure safety, reliability, and efficiency.
+
+### 🔑 Core Capabilities
+
+1. **📡 Centralized Train Monitoring**
+   - Unified platform to track train availability, operational status, cleaning schedules, and maintenance logs.
+   - Ensures complete visibility for operations and maintenance teams.
+
+2. **🔔 Automated Compliance & Alerting**
+   - Intelligent alerts for expiring **fitness checks**, pending **maintenance tasks**, and upcoming **cleaning schedules**.
+   - Prevents oversight by proactively notifying staff before deadlines.
+
+3. **📊 Predictive Analytics & Forecasting**
+   - Machine Learning models anticipate maintenance needs based on usage patterns, historical data, and performance trends.
+   - Reduces unplanned downtime and enables **condition-based maintenance** instead of rigid time-based checks.
+
+4. **⚡ Optimized Scheduling & Resource Allocation**
+   - Multi-Objective Optimization (MOO) algorithms balance multiple factors:
+     - Train availability  
+     - Maintenance requirements  
+     - Safety checks  
+     - Passenger demand during peak and off-peak hours  
+   - Reinforcement Learning (RL) agents learn optimal scheduling strategies over time.
+
+5. **🖥 Intuitive Dashboards & Role-Based Access**
+   - Tailored views for different stakeholders:
+     - **Operations team** → Train induction & scheduling overview  
+     - **Maintenance crew** → Upcoming tasks & predictive alerts  
+     - **Management** → KPI tracking & performance analytics  
+   - Interactive visualizations simplify complex data into actionable insights.
+
+6. **🛠 Scalable & Modular Architecture**
+   - Decoupled backend services (Node.js + FastAPI) with **shared storage** for smooth integration.  
+   - Easily extendable for new features (e.g., integration with IoT sensors, passenger demand forecasting).  
+   - Deployable in **local, Docker, or Kubernetes environments** for development and production.
+
+---
+
+✨ In short: The system acts as an **AI-powered brain** for metro operations — automatically monitoring trains, forecasting issues, and optimizing schedules — ensuring Kochi Metro runs **safer, smarter, and more efficiently**.
+
+---
 
 ## 🛠 Tech Stack
 - **Backend**: Node.js (Express)  
