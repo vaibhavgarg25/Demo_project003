@@ -8,23 +8,30 @@
 
 /* Light mode tokens */
 :root {
-  --teal-500: #08a6a0;
-  --teal-600: #058f88;
+  /* Warm + human palette */
+  --teal-500: #06b6a4; /* Primary (user requested) */
+  --teal-600: #08938a; /* Accent (user requested) */
   --muted: #6b7280;
 
   --bg: #fbfdff;
   --fg: #0f172a;
+
+  /* Panel / card defaults */
   --card-bg: rgba(255,255,255,0.95);
-  --card-border: rgba(0,0,0,0.06); 
-  --card-shadow: 0 10px 30px rgba(20,20,20,0.08);
+  --card-border: rgba(0,0,0,0.06);
+  --card-shadow: 0 10px 30px rgba(20,20,20,0.06); /* soft shadow */
+  --card-shadow-strong: 0 18px 40px rgba(20,20,20,0.09);
   --glass-blur: 8px;
-  --panel-gradient: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(250,250,252,0.85));
+  --panel-gradient: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(250,250,252,0.90));
+  --card-gradient: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(250,250,252,0.96));
 
   /* small helpers */
   --radius: 12px;
-  --brand-teal: 180 100% 50%;
+  --brand-teal: 180 100% 50%; /* H S L triple for some gradients */
+  --ring-grad-1: #06b6a4;
+  --ring-grad-2: #08938a;
 
-  --progress-text-color: #0f172a
+  --progress-text-color: #0f172a;
 }
 
 /* Dark mode tokens (class-based) */
@@ -32,16 +39,21 @@
   --bg: #0a0f18;
   --fg: #f8fafc;
   --card-bg: rgba(7,10,12,0.60);
-  --card-border: rgba(255,255,255,0.08); 
+  --card-border: rgba(255,255,255,0.08);
   --card-shadow: 0 12px 40px rgba(0,0,0,0.6);
+  --card-shadow-strong: 0 22px 60px rgba(0,0,0,0.7);
   --panel-gradient: linear-gradient(180deg, rgba(6,7,10,0.78), rgba(10,12,14,0.56));
   --glass-blur: 10px;
   --brand-teal: 180 90% 45%;
   --muted: #9aa3ad;
-  --progress-text-color: #f8fafc
+  --progress-text-color: #f8fafc;
 }
 
 /* App-level colors mapped to theme */
+html, body {
+  height: 100%;
+}
+
 body {
   background: var(--bg);
   color: var(--fg);
@@ -52,6 +64,8 @@ body {
 /* ==============================================================================
    Core Glass morphism card - use .glass-card everywhere you need a card
    ============================================================================== */
+/* glass-card intentionally uses tokenized panel gradient and blur — keeps
+   the frosted effect local to the card instead of the full-screen backdrop */
 .glass-card {
   background: var(--panel-gradient);
   border: 1px solid var(--card-border);
@@ -60,12 +74,13 @@ body {
   -webkit-backdrop-filter: blur(var(--glass-blur));
   border-radius: var(--radius);
   padding: 1rem;
-  transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+  z-index: 50; /* ensures it sits above backdrop */
 }
 
 .glass-card:hover {
   transform: translateY(-6px);
-  box-shadow: 0 20px 50px rgba(3,15,23,0.10);
+  box-shadow: var(--card-shadow-strong);
 }
 
 /* Small text / accessible contrast for cards */
@@ -82,23 +97,90 @@ body {
 }
 
 /* ==============================================================================
-   KPI tile styles
+   New small visual helpers (status pills, ring, dividers)
+   ============================================================================== */
+
+/* nicer small status pill (use classes like: <span class="status-pill">In service</span>) */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .28rem .6rem;
+  border-radius: 999px;
+  font-size: .78rem;
+  font-weight: 600;
+  box-shadow: inset 0 -6px 20px rgba(255,255,255,0.02);
+  white-space: nowrap;
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid transparent;
+}
+
+/* status variants — use these with .status-pill */
+.status-good {
+  background: rgba(34,197,94,0.06);
+  color: rgb(16,185,129); /* emerald/teal tint */
+  border-color: rgba(34,197,94,0.08);
+}
+.status-soon {
+  background: rgba(250,204,21,0.06);
+  color: #f59e0b;
+  border-color: rgba(250,204,21,0.08);
+}
+.status-warning {
+  background: rgba(249,115,22,0.06);
+  color: #f97316;
+  border-color: rgba(249,115,22,0.08);
+}
+.status-expired {
+  background: rgba(239,68,68,0.06);
+  color: #ef4444;
+  border-color: rgba(239,68,68,0.08);
+}
+
+/* gentle circular progress / health wrapper */
+.health-ring, .kpi-ring {
+  width: 72px;
+  height: 72px;
+  display: grid;
+  place-items: center;
+}
+
+/* gentle card section divider */
+.card-divider {
+  border-top: 1px solid var(--card-border);
+  margin-top: 1rem;
+  padding-top: 1rem;
+}
+
+/* subtle accent gradient button helper */
+.btn-gradient {
+  background: linear-gradient(90deg, var(--teal-500), var(--teal-600));
+  color: white;
+  border: none;
+  padding: .45rem .75rem;
+  border-radius: 8px;
+}
+
+/* ==============================================================================
+   KPI tile styles (kept, but tuned to new tokens)
    ============================================================================== */
 .kpi-tile {
-  background: var(--panel-gradient);
+  background: var(--card-gradient);
   border: 1px solid var(--card-border);
   border-radius: var(--radius);
   padding: 1.25rem;
   box-shadow: var(--card-shadow);
-  transition: transform .2s ease, box-shadow .2s ease;
+  transition: transform .18s ease, box-shadow .18s ease;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  color: var(--fg);
 }
 
 .kpi-tile:hover {
   transform: translateY(-6px);
-  box-shadow: 0 20px 50px rgba(3,15,23,0.12);
+  box-shadow: var(--card-shadow-strong);
 }
 
 .kpi-tile .kpi-top {
@@ -160,13 +242,13 @@ body {
 }
 
 /* ==============================================================================
-   CTA button (teal gradient)
+   CTA button (teal gradient) tuned to Warm+Human
    ============================================================================== */
 .cta-primary {
-  background: linear-gradient(135deg, hsl(var(--brand-teal)) 0%, rgba(6,182,164,0.95) 100%);
+  background: linear-gradient(135deg, var(--teal-500) 0%, var(--teal-600) 100%);
   color: white;
   border: 1px solid rgba(255,255,255,0.06);
-  box-shadow: 0 6px 18px rgba(8,166,160,0.12);
+  box-shadow: 0 6px 18px rgba(8,166,160,0.10);
   transition: all 0.25s ease;
   padding: .6rem 1rem;
   border-radius: 10px;
@@ -176,13 +258,13 @@ body {
   font-weight:600;
 }
 
-.cta-primary:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(8,166,160,0.14); }
+.cta-primary:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(8,166,160,0.12); }
 
 /* ==============================================================================
    Small decorative utilities & animations (kept concise)
    ============================================================================== */
 .spotlight-glow {
-  background: radial-gradient(circle at center, rgba(8,166,160,0.18) 0%, rgba(8,166,160,0.06) 30%, transparent 60%);
+  background: radial-gradient(circle at center, rgba(6,182,164,0.16) 0%, rgba(6,182,164,0.06) 30%, transparent 60%);
   filter: blur(40px);
   pointer-events:none;
 }
@@ -200,11 +282,12 @@ body {
   transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
   position: relative;
   overflow: hidden;
+  color: var(--fg);
 }
 
 .feature-card:hover {
   transform: translateY(-6px);
-  box-shadow: 0 20px 40px rgba(3,15,23,0.08);
+  box-shadow: 0 20px 40px rgba(3,15,23,0.06);
   border-color: rgba(var(--brand-teal), 0.14);
 }
 
@@ -233,33 +316,39 @@ body {
 }
 
 /* ==============================================================================
-   SlideOver hard-coded look (self-contained but matching the theme)
-   - Use in SlideOver component: the CSS is safe to be used regardless of global variables
+   SlideOver / Modal backdrop + panel
+   - backdrop: darkens only (no blur)
+   - panel: is frosted (blur) and uses tokenized background
    ============================================================================== */
+.sld-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;                    /* keep lower than modal */
+  background: rgba(0,0,0,0.55);   /* slightly stronger darken looks nicer in dark mode */
+  backdrop-filter: none;          /* avoid global blur */
+}
+
 .sld-panel {
   width: 100%;
-  max-width: 440px;
-  height: 100%;
+  max-width: 1000px;              /* large modal by default; override per component if needed */
+  max-height: 90vh;
   position: fixed;
-  right: 0;
-  top: 0;
-  z-index: 60;
-  display: flex;
-  flex-direction: column;
-  background: var(--card-bg);
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 50;                    /* sits above backdrop */
+  display: block;
+  border-radius: 16px;
+  background: var(--panel-gradient);
   color: var(--fg);
-  border-left: 1px solid var(--card-border);
+  border: 1px solid var(--card-border);
   box-shadow: 0 30px 60px rgba(3,15,23,0.12);
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
+  overflow: hidden;
 }
 
-.sld-backdrop {
-  position: fixed; inset:0; z-index:50;
-  background: rgba(0,0,0,0.45);
-  backdrop-filter: blur(6px);
-}
-
+/* sld- helpers (kept compact) */
 .sld-header {
   padding: 1rem 1.25rem;
   display:flex;
@@ -271,10 +360,8 @@ body {
 .sld-content {
   padding: 1rem 1.25rem;
   overflow-y: auto;
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
+  max-height: calc(90vh - 120px);
+  display: block;
 }
 
 .sld-stats {
@@ -287,6 +374,7 @@ body {
   border: 1px solid var(--card-border);
   padding: .75rem;
   border-radius: 10px;
+  color: var(--fg);
 }
 .sld-actions {
   display:flex;
@@ -298,7 +386,7 @@ body {
    Small accessibility & responsive tweaks
    ============================================================================== */
 @media (max-width: 768px) {
-  .sld-panel { max-width: 100%; height: 100vh; }
+  .sld-panel { max-width: 96%; max-height: 96vh; padding: .5rem; border-radius: 12px; }
   .kpi-tile { padding: 1rem; }
   .spotlight-glow { width: 260px; height: 260px; }
 }
@@ -308,3 +396,10 @@ body {
    ============================================================================== */
 .dark .glass-card { background: linear-gradient(180deg, rgba(10,12,14,0.56), rgba(10,12,14,0.36)); }
 .dark .cta-primary { box-shadow: 0 10px 30px rgba(8,166,160,0.18); }
+
+/* Small helper to override any remaining 'white' backgrounds safely */
+.bg-card {
+  background: var(--card-bg) !important;
+  color: var(--fg) !important;
+  border-color: var(--card-border) !important;
+}
