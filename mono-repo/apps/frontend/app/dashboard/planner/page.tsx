@@ -7,6 +7,7 @@ import { z } from "zod"
 import { Play, RotateCcw, Save } from "lucide-react"
 import { fetchTrainsets, type Trainset } from "@/lib/mock-data"
 import { generatePlan, savePlannerRun, type PlannerResult } from "@/lib/planner"
+import { daysUntil } from "@/lib/utils"
 
 const plannerSchema = z.object({
   maxTrains: z.number().min(1).max(20),
@@ -24,6 +25,82 @@ const statusOptions = [
   { value: "Maintenance", label: "Maintenance" },
   { value: "OutOfService", label: "Out of Service" },
 ]
+
+/* ---------------------------
+   Health calculation (same as before — fallback if result.score missing)
+   --------------------------- */
+function daysUntilSafe(d: string | Date) {
+  try {
+    return daysUntil(d as any)
+  } catch {
+    return Number.POSITIVE_INFINITY
+  }
+}
+
+function computeRawHealth(trainset: any): number {
+  const safeNum = (v: any, cap = 100) => (typeof v === "number" && !Number.isNaN(v) ? Math.max(0, Math.min(v, cap)) : 0)
+
+  const fitnessFlags = [
+    trainset.fitness?.rollingStockFitnessStatus,
+    trainset.fitness?.signallingFitnessStatus,
+    trainset.fitness?.telecomFitnessStatus,
+  ]
+  const fitnessPopulated = fitnessFlags.filter((f) => f !== undefined && f !== null).length
+  const fitnessTrue = fitnessFlags.filter((f) => f === true).length
+  const fitnessPercent = fitnessPopulated ? (fitnessTrue / fitnessPopulated) * 100 : 50
+
+  const expiryDates = [
+    trainset.fitness?.rollingStockFitnessExpiryDate,
+    trainset.fitness?.signallingFitnessExpiryDate,
+    trainset.fitness?.telecomFitnessExpiryDate,
+  ].filter(Boolean)
+  const minExpiryDays = expiryDates.length
+    ? Math.min(...expiryDates.map((d: any) => daysUntilSafe(d)))
+    : Number.POSITIVE_INFINITY
+  let expiryPenalty = 0
+  if (minExpiryDays <= 0) expiryPenalty = 40
+  else if (minExpiryDays <= 7) expiryPenalty = 20
+  else if (minExpiryDays <= 30) expiryPenalty = 10
+
+  const openJobs = trainset.jobCardStatus?.openJobCards ?? 0
+  const jobPenalty = Math.min(openJobs * 3, 30)
+
+  const mileage = safeNum(trainset.mileage?.totalMileageKM ?? trainset.totalMileageKM ?? 0, 1_000_000)
+  const mileageScore = 100 * (1 / (1 + Math.pow(mileage / 180000, 1.2)))
+
+  const brake = safeNum(trainset.mileage?.brakepadWearPercent ?? trainset.brakepadWearPercent ?? 0, 100)
+  const hvac = safeNum(trainset.mileage?.hvacWearPercent ?? trainset.hvacWearPercent ?? 0, 100)
+  const wearScore = brake || hvac ? Math.max(0, 100 - (brake + hvac) / 2) : 70
+
+  const cleaningPenalty = trainset.cleaning?.cleaningRequired || trainset.cleaningRequired ? 10 : 0
+  const brandingBoost = trainset.branding?.brandingActive ? 4 : 0
+  const opScore = safeNum(trainset.operations?.score ?? 70, 100)
+
+  const raw =
+    0.28 * fitnessPercent +
+    0.22 * mileageScore +
+    0.2 * wearScore +
+    0.2 * opScore +
+    0.1 * 100 -
+    expiryPenalty -
+    jobPenalty -
+    cleaningPenalty +
+    brandingBoost
+
+  return Math.round(Math.max(0, Math.min(100, raw)))
+}
+
+function mapToDisplayHealth(raw: number): number {
+  return Math.round(70 + (raw / 100) * 20)
+}
+
+function getHealthScore(trainset: any): number {
+  return mapToDisplayHealth(computeRawHealth(trainset))
+}
+
+/* ---------------------------
+   Component
+   --------------------------- */
 
 export default function PlannerPage() {
   const [trainsets, setTrainsets] = useState<Trainset[]>([])
@@ -76,6 +153,7 @@ export default function PlannerPage() {
     },
   })
 
+  // WATCHED VALUES (needed by handleSave)
   const watchedValues = watch()
 
   const onSubmit = useCallback(
@@ -105,12 +183,10 @@ export default function PlannerPage() {
 
   const handleSave = useCallback(() => {
     if (results.length === 0) return
-    // make save idempotent & explicit
     const confirmed = window.confirm("Save this plan to history?")
     if (!confirmed) return
     try {
       savePlannerRun(watchedValues, results)
-      // user-visible success feedback without changing backend API
       window.alert("Plan saved to history!")
     } catch (err) {
       console.error("Save failed", err)
@@ -124,22 +200,22 @@ export default function PlannerPage() {
     setError(null)
   }, [reset])
 
-  // memoized derived values for cheaper re-renders
   const selectedResults = useMemo(() => results.filter((r) => r.selected), [results])
 
   const averageScore = useMemo(() => {
     if (selectedResults.length === 0) return 0
-    return Math.round(selectedResults.reduce((sum, r) => sum + r.score, 0) / selectedResults.length)
+    return Math.round(
+      selectedResults.reduce((sum, r) => {
+        const score = typeof r.score === "number" ? r.score : getHealthScore(r.trainset)
+        return sum + score
+      }, 0) / selectedResults.length
+    )
   }, [selectedResults])
 
   const averageConfidence = useMemo(() => {
     if (selectedResults.length === 0) return 0
-    return Math.round(
-      selectedResults.reduce((sum, r) => sum + r.confidence, 0) / selectedResults.length
-    )
+    return Math.round(selectedResults.reduce((sum, r) => sum + r.confidence, 0) / selectedResults.length)
   }, [selectedResults])
-
-  // small accessibility + UX improvements in the render below — skeletons, aria labels, min/max on inputs
 
   if (loading) {
     return (
@@ -287,7 +363,6 @@ export default function PlannerPage() {
                 <button
                   type="submit"
                   disabled={isGenerating || trainsets.length === 0}
-                  // hard-coded neutral colors so button is visible in both light/dark themes
                   style={{
                     backgroundColor: isGenerating || trainsets.length === 0 ? "#94a3b8" : "#2563eb",
                     color: "#ffffff",
@@ -372,42 +447,45 @@ export default function PlannerPage() {
                   <h3 className="font-semibold text-text">Selected Trainsets</h3>
                 </div>
                 <div className="divide-y divide-border">
-                  {selectedResults.map((result) => (
-                    <div key={result.trainset.id} className="p-4 flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3">
-                          <h4 className="font-medium text-text">{result.trainset.id}</h4>
-                          <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400">
-                            {result.trainset.status}
-                          </span>
-                        </div>
-                        <p className="text-sm text-muted mt-1">{result.reason}</p>
-                        <div className="flex items-center gap-4 mt-2 text-xs text-muted">
-                          <span>Mileage: {result.trainset.mileage.toLocaleString()}</span>
-                          <span>Position: {result.trainset.stabling_position}</span>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="flex items-center gap-4">
-                          <div className="text-center">
-                            <p className="text-lg font-bold text-text">{result.score}</p>
-                            <p className="text-xs text-muted">Score</p>
+                  {selectedResults.map((result) => {
+                    const t = result.trainset
+                    const score = typeof result.score === "number" ? result.score : getHealthScore(t)
+                    return (
+                      <div key={t.trainID} className="p-4 flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3">
+                            <h4 className="font-medium text-text">{t.trainID}</h4>
+                            <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400">
+                              {t.status}
+                            </span>
                           </div>
-                          <div className="relative w-12 h-12">
-                            {/* Minimal KPI ring — relies on existing global CSS for .kpi-ring. Keeps markup identical so styling remains compatible with your global CSS. */}
-                            <div
-                              className="kpi-ring w-12 h-12"
-                              style={{ "--progress": result.confidence } as React.CSSProperties}
-                            >
-                              <span className="absolute inset-0 flex items-center justify-center text-xs font-medium text-text">
-                                {Math.round(result.confidence)}
-                              </span>
+                          <p className="text-sm text-muted mt-1">{result.reason}</p>
+                          <div className="flex items-center gap-4 mt-2 text-xs text-muted">
+                            <span>Mileage: {(t.mileage?.totalMileageKM ?? 0).toLocaleString()}</span>
+                            <span>Position: {t.stabling_position ?? t.stabling?.bayPositionID ?? "N/A"}</span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="flex items-center gap-4">
+                            <div className="text-center">
+                              <p className="text-lg font-bold text-text">{score}</p>
+                              <p className="text-xs text-muted">Score</p>
+                            </div>
+                            <div className="relative w-12 h-12">
+                              <div
+                                className="kpi-ring w-12 h-12"
+                                style={{ "--progress": result.confidence } as React.CSSProperties}
+                              >
+                                <span className="absolute inset-0 flex items-center justify-center text-xs font-medium text-text">
+                                  {Math.round(result.confidence)}
+                                </span>
+                              </div>
                             </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
 
@@ -419,43 +497,47 @@ export default function PlannerPage() {
                   </div>
                   <div className="max-h-96 overflow-y-auto">
                     <div className="divide-y divide-border">
-                      {results.map((result) => (
-                        <div
-                          key={result.trainset.id}
-                          className={`p-4 flex items-center justify-between ${
-                            result.selected ? "bg-green-50 dark:bg-green-900/10" : ""
-                          }`}
-                        >
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3">
-                              <h4 className="font-medium text-text">{result.trainset.id}</h4>
-                              <span
-                                className={`px-2 py-1 text-xs rounded-full ${
-                                  result.trainset.status === "Active"
-                                    ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400"
-                                    : result.trainset.status === "Standby"
-                                    ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400"
-                                    : result.trainset.status === "Maintenance"
-                                    ? "bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400"
-                                    : "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400"
-                                }`}
-                              >
-                                {result.trainset.status}
-                              </span>
-                              {result.selected && (
-                                <span className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400">
-                                  Selected
+                      {results.map((result) => {
+                        const t = result.trainset
+                        const score = typeof result.score === "number" ? result.score : getHealthScore(t)
+                        return (
+                          <div
+                            key={t.trainID}
+                            className={`p-4 flex items-center justify-between ${
+                              result.selected ? "bg-green-50 dark:bg-green-900/10" : ""
+                            }`}
+                          >
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3">
+                                <h4 className="font-medium text-text">{t.trainID}</h4>
+                                <span
+                                  className={`px-2 py-1 text-xs rounded-full ${
+                                    t.status === "Active"
+                                      ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400"
+                                      : t.status === "Standby"
+                                      ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400"
+                                      : t.status === "Maintenance"
+                                      ? "bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400"
+                                      : "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400"
+                                  }`}
+                                >
+                                  {t.status}
                                 </span>
-                              )}
+                                {result.selected && (
+                                  <span className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400">
+                                    Selected
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-sm text-muted mt-1">{result.reason}</p>
                             </div>
-                            <p className="text-sm text-muted mt-1">{result.reason}</p>
+                            <div className="text-right">
+                              <p className="text-lg font-bold text-text">{score}</p>
+                              <p className="text-xs text-muted">{result.confidence}% confidence</p>
+                            </div>
                           </div>
-                          <div className="text-right">
-                            <p className="text-lg font-bold text-text">{result.score}</p>
-                            <p className="text-xs text-muted">{result.confidence}% confidence</p>
-                          </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </div>
                 </div>
