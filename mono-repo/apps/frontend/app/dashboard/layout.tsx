@@ -46,7 +46,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     { label: "Planner", href: "/dashboard/planner", icon: <Calendar className="h-5 w-5 text-black dark:text-white" /> },
     { label: "Simulation", href: "/dashboard/simulation", icon: <BarChart3Icon className="h-5 w-5 text-black dark:text-white" /> },
     { label: "History", href: "/dashboard/history", icon: <History className="h-5 w-5 text-black dark:text-white" /> },
-    { label: "Settings", href: "/dashboard/settings", icon: <Settings className="h-5 w-5 text-black dark:text-white" /> },
+    // { label: "Settings", href: "/dashboard/settings", icon: <Settings className="h-5 w-5 text-black dark:text-white" /> },
     { label: "Upload", href: "/dashboard/csv-template", icon: <Upload className="h-5 w-5 text-black dark:text-white" /> },
   ];
 

@@ -1,0 +1,2 @@
+trainID,trainname,rollingStockFitnessStatus,signallingFitnessStatus,telecomFitnessStatus,fitnessExpiryDate,openJobCards,totalMileageKM,brakepadWearPercent,hvacWearPercent,cleaningRequired,bayPositionID,operationalStatus
+TRAIN001,Metro Train 1,true,true,true,2025-12-31,0,15000,12,10,false,A1,in_service

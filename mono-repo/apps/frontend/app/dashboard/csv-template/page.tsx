@@ -1,88 +1,115 @@
 "use client"
 
-import type React from "react"
-
-import { useState, useRef } from "react"
+import React, { useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import {
-  Download,
-  Upload,
-  FileText,
-  CheckCircle,
-  XCircle,
-  AlertTriangle,
-  FileSpreadsheet,
-  CloudUpload,
-} from "lucide-react"
+import { CheckCircle, XCircle, AlertTriangle, CloudUpload, Download, Upload, FileSpreadsheet } from "lucide-react"
+import { FaFileCsv, FaCheckCircle, FaExclamationTriangle, FaCloudUploadAlt, FaDownload } from "react-icons/fa"
 
+/* -------------------------
+   Types
+   ------------------------- */
 type ValidationResult = {
   isValid: boolean
   errors: string[]
   warnings: string[]
-  headerComparison?: {
-    missing: string[]
-    extra: string[]
-    orderMismatch: boolean
-  }
+  missing?: string[]
+  extra?: string[]
 }
 
-// Recommended headers for user guidance only. Validation will be lenient and only
-// require the minimal fields the backend needs to upsert a train: trainID, trainname.
+/* -------------------------
+   Helpers
+   ------------------------- */
+const normalizeHeader = (h: string) =>
+  h
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "")
+
+const REQUIRED_HEADERS = ["trainid", "trainname"]
+const KNOWN_OPTIONAL = new Set([
+  "rollingstockfitnessstatus",
+  "signallingfitnessstatus",
+  "telecomfitnessstatus",
+  "rollingstockfitnessexpirydate",
+  "signallingfitnessexpirydate",
+  "telecomfitnessexpirydate",
+  "jobcardstatus",
+  "openjobcards",
+  "closedjobcards",
+  "lastjobcardupdate",
+  "brandingactive",
+  "brandcampaignid",
+  "exposurehoursaccrued",
+  "exposurehourstarget",
+  "exposuredailyquota",
+  "totalmileagekm",
+  "mileagesincelastservicekm",
+  "mileagebalancevariance",
+  "brakepadwearpercent",
+  "hvacwearpercent",
+  "cleaningrequired",
+  "cleaningslotstatus",
+  "bayoccupancyidc",
+  "cleaningcrewassigned",
+  "lastcleaneddate",
+  "baypositionid",
+  "shuntingmovesrequired",
+  "stablingsequenceorder",
+  "operationalstatus",
+  "reasonforstatus",
+])
+
 const TEMPLATE_HEADERS = [
   "trainID",
   "trainname",
-  // Optional/common fields (informational)
   "rollingStockFitnessStatus",
   "signallingFitnessStatus",
   "telecomFitnessStatus",
   "fitnessExpiryDate",
-  "lastFitnessCheckDate",
-  "jobCardStatus",
   "openJobCards",
-  "closedJobCards",
-  "lastJobCardUpdate",
-  "brandingActive",
-  "brandCampaignID",
-  "exposureHoursAccrued",
-  "exposureHoursTarget",
-  "exposureDailyQuota",
   "totalMileageKM",
-  "mileageSinceLastServiceKM",
-  "mileageBalanceVariance",
   "brakepadWearPercent",
   "hvacWearPercent",
   "cleaningRequired",
-  "cleaningSlotStatus",
-  "bayOccupancyIDC",
-  "cleaningCrewAssigned",
-  "lastCleanedDate",
   "bayPositionID",
-  "shuntingMovesRequired",
-  "stablingSequenceOrder",
   "operationalStatus",
-  "reasonForStatus",
 ]
 
 export default function CSVTemplatePage() {
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null)
-  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null)
-  const [isUploading, setIsUploading] = useState(false)
-  const [uploadSuccess, setUploadSuccess] = useState(false)
-  const [showConfirmation, setShowConfirmation] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
+  const [file, setFile] = useState<File | null>(null)
+  const [validation, setValidation] = useState<ValidationResult | null>(null)
+  const [previewRows, setPreviewRows] = useState<string[][] | null>(null)
+  const [isSending, setIsSending] = useState(false)
+  const [sendSuccess, setSendSuccess] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
+  const [showConfirm, setShowConfirm] = useState(false)
+  const [confirmChecked, setConfirmChecked] = useState(false)
+
+  /* -------------------------
+     Download template
+     ------------------------- */
   const downloadTemplate = () => {
-    // Create CSV template with headers and sample data
-    const csvContent = [
-      TEMPLATE_HEADERS.join(","),
-      "TRAIN001,Metro Train 1,Active,BAY-A1,2024-12-31,2,5,Daily,Complete,15000,15,8",
-      "TRAIN002,Metro Train 2,Standby,BAY-B2,2024-11-30,0,3,Weekly,Pending,12500,22,12",
-    ].join("\n")
-
-    const blob = new Blob([csvContent], { type: "text/csv" })
+    const sampleRow = [
+      "TRAIN001",
+      "Metro Train 1",
+      "true",
+      "true",
+      "true",
+      "2025-12-31",
+      "0",
+      "15000",
+      "12",
+      "10",
+      "false",
+      "A1",
+      "in_service",
+    ]
+    const csv = [TEMPLATE_HEADERS.join(","), sampleRow.join(",")].join("\n")
+    const blob = new Blob([csv], { type: "text/csv" })
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
@@ -93,375 +120,253 @@ export default function CSVTemplatePage() {
     window.URL.revokeObjectURL(url)
   }
 
-  const validateCSVHeaders = (headers: string[]): ValidationResult => {
-    // Match backend normalization: lowercased, non-alphanumerics removed
-    const normalize = (h: string) =>
-      h
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "")
-    const normalizedHeaders = headers.map((h) => normalize(h))
+  /* -------------------------
+     Validation & Preview
+     ------------------------- */
+  const validateAndPreview = (text: string): ValidationResult => {
+    const lines = text.split(/\r?\n/).filter(Boolean)
+    if (lines.length === 0) {
+      return { isValid: false, errors: ["❌ File is empty."], warnings: [], missing: REQUIRED_HEADERS, extra: [] }
+    }
 
-    // Minimal required to upsert a train
-    const required = ["trainid", "trainname"]
+    const headers = lines[0].split(",").map((h) => h.trim())
+    const normalized = headers.map(normalizeHeader)
 
-    // Known optional/canonical headers supported by backend (for info only)
-    const knownOptional = new Set([
-      "rollingstockfitnessstatus",
-      "signallingfitnessstatus",
-      "telecomfitnessstatus",
-      "rollingstockfitnessexpirydate",
-      "signallingfitnessexpirydate",
-      "telecomfitnessexpirydate",
-      "jobcardstatus",
-      "openjobcards",
-      "closedjobcards",
-      "lastjobcardupdate",
-      "brandingactive",
-      "brandcampaignid",
-      "exposurehoursaccrued",
-      "exposurehourstarget",
-      "exposuredailyquota",
-      "totalmileagekm",
-      "mileagesincelastservicekm",
-      "mileagebalancevariance",
-      "brakepadwearpercent",
-      "hvacwearpercent",
-      "cleaningrequired",
-      "cleaningslotstatus",
-      "bayoccupancyidc",
-      "cleaningcrewassigned",
-      "lastcleaneddate",
-      "baypositionid",
-      "shuntingmovesrequired",
-      "stablingsequenceorder",
-      "operationalstatus",
-      "reasonforstatus",
-    ])
+    const missing = REQUIRED_HEADERS.filter((r) => !normalized.includes(r))
+    const extra = normalized.filter((n) => !REQUIRED_HEADERS.includes(n) && !KNOWN_OPTIONAL.has(n))
 
     const errors: string[] = []
     const warnings: string[] = []
+    if (missing.length) errors.push(`⚠️ Missing required: ${missing.join(", ")}`)
+    if (extra.length) warnings.push(`ℹ️ Unrecognized columns (ignored): ${extra.join(", ")}`)
 
-    // Required columns check (only trainid, trainname)
-    const missing = required.filter((h) => !normalizedHeaders.includes(h))
+    const previews = lines.slice(1, 6).map((ln) => ln.split(",").map((c) => c.trim()))
+    setPreviewRows(previews.length ? previews : null)
 
-    // Extra/unknown columns (informational only)
-    const extra = normalizedHeaders.filter((h) => !required.includes(h) && !knownOptional.has(h))
-
-    if (missing.length > 0) {
-      errors.push(`Missing required columns: ${missing.join(", ")}`)
-    }
-
-    if (extra.length > 0) {
-      warnings.push(`Unrecognized columns (will be ignored): ${extra.join(", ")}`)
-    }
-
-    return {
+    const result: ValidationResult = {
       isValid: missing.length === 0,
       errors,
       warnings,
-      headerComparison: {
-        missing,
-        extra,
-        orderMismatch: false,
-      },
+      missing,
+      extra,
     }
+    setValidation(result)
+    return result
   }
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-
-    setUploadedFile(file)
-    setValidationResult(null)
-    setUploadSuccess(false)
-
-    // Read and validate the CSV file
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const text = e.target?.result as string
-      const lines = text.split("\n")
-      if (lines.length > 0) {
-        const headers = lines[0].split(",")
-        const validation = validateCSVHeaders(headers)
-        setValidationResult(validation)
-      }
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0] ?? null
+    setFile(f)
+    setSendSuccess(false)
+    setSendError(null)
+    setShowConfirm(false)
+    setConfirmChecked(false)
+    setPreviewRows(null)
+    if (!f) {
+      setValidation(null)
+      return
     }
-    reader.readAsText(file)
+
+    if (!f.name.toLowerCase().endsWith(".csv")) {
+      setValidation({ isValid: false, errors: ["❌ Please upload a .csv file."], warnings: [] })
+      return
+    }
+
+    const text = await f.text()
+    validateAndPreview(text)
   }
 
-  const handleUploadClick = () => {
-    if (!uploadedFile || !validationResult?.isValid) return
-    setShowConfirmation(true)
+  const openFileBrowser = () => fileInputRef.current?.click()
+
+  /* -------------------------
+     Confirm modal actions
+     ------------------------- */
+  const handleOpenConfirm = () => {
+    if (!file || !validation?.isValid) return
+    setShowConfirm(true)
+    setConfirmChecked(false)
   }
 
-  const handleConfirmUpload = async () => {
-    if (!uploadedFile || !validationResult?.isValid) return
+  const handleCancelConfirm = () => {
+    setShowConfirm(false)
+    setConfirmChecked(false)
+  }
 
-    setShowConfirmation(false)
-    setIsUploading(true)
+  const handleSend = async () => {
+    if (!file || !validation?.isValid || !confirmChecked) return
+    setIsSending(true)
+    setSendError(null)
     try {
-      const formData = new FormData()
-      formData.append("file", uploadedFile)
-
+      const form = new FormData()
+      form.append("file", file)
       const baseUrl = process.env.NEXT_PUBLIC_CLIENT_URL || "http://localhost:8000"
       const token = typeof window !== "undefined" ? localStorage.getItem("token") : null
-
-      const response = await fetch(`${baseUrl}/api/upload/upload`, {
+      const res = await fetch(`${baseUrl}/api/upload/upload`, {
         method: "POST",
-        headers: {
-          ...(token && { Authorization: `Bearer ${token}` }),
-        },
-        body: formData,
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: form,
       })
-
-      if (!response.ok) {
-        throw new Error(`Upload failed: ${response.statusText}`)
-      }
-
-      const result = await response.json()
-      setUploadSuccess(true)
-
-      // Reset form after successful upload
+      if (!res.ok) throw new Error(await res.text())
+      setSendSuccess(true)
       setTimeout(() => {
-        setUploadedFile(null)
-        setValidationResult(null)
-        setUploadSuccess(false)
-        if (fileInputRef.current) {
-          fileInputRef.current.value = ""
-        }
-      }, 3000)
-    } catch (error) {
-      console.error("Upload failed:", error)
-      setValidationResult({
-        ...validationResult,
-        isValid: false,
-        errors: [
-          ...(validationResult?.errors || []),
-          `Upload failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-        ],
-      })
+        setFile(null)
+        setValidation(null)
+        setPreviewRows(null)
+        setShowConfirm(false)
+        setConfirmChecked(false)
+        if (fileInputRef.current) fileInputRef.current.value = ""
+      }, 1800)
+    } catch (err: any) {
+      setSendError(err?.message || "Upload failed")
     } finally {
-      setIsUploading(false)
+      setIsSending(false)
     }
   }
 
-  const handleCancelUpload = () => {
-    setShowConfirmation(false)
-  }
-
+  /* -------------------------
+     Render
+     ------------------------- */
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
+      {/* Header */}
       <div className="text-center space-y-2">
-        <h1 className="text-3xl font-bold text-balance text-foreground">CSV Template Management</h1>
-        <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-          Download the official template, edit it locally, and upload your trainset data with confidence
+        <h1 className="text-4xl font-bold text-foreground flex items-center justify-center gap-2">
+          <FaFileCsv className="text-green-500" /> Data Upload
+        </h1>
+        <p className="text-muted-foreground">
+          📝 Step 1: Download → ✍️ Edit → 📤 Upload → ✅ Confirm
         </p>
       </div>
 
+      {/* Cards row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Template Download Card */}
-        <Card className="border-2 border-accent bg-muted">
-          <CardHeader className="text-center">
-            <div className="mx-auto w-16 h-16 bg-accent text-accent-foreground rounded-full flex items-center justify-center mb-4">
-              <FileSpreadsheet className="w-8 h-8" />
-            </div>
-            <CardTitle className="text-xl text-foreground">Official CSV Template</CardTitle>
-            <CardDescription className="text-muted-foreground">
-              Download the official template with correct column headers and sample data
-            </CardDescription>
+        {/* Download */}
+        <Card className="glass-card p-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <FaDownload className="text-accent" /> Download Template
+            </CardTitle>
+            <CardDescription>📂 Includes headers + 1 sample row</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="p-4 rounded-lg bg-background border border-border">
-              <h4 className="font-semibold mb-3 text-foreground flex items-center gap-2">
-                <FileText className="w-4 h-4" />
-                Template includes these columns:
-              </h4>
-              <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto">
-                {TEMPLATE_HEADERS.slice(0, 8).map((header) => (
-                  <Badge key={header} variant="secondary" className="text-xs justify-center">
-                    {header}
-                  </Badge>
-                ))}
-                {TEMPLATE_HEADERS.length > 8 && (
-                  <Badge variant="outline" className="text-xs justify-center">
-                    +{TEMPLATE_HEADERS.length - 8} more
-                  </Badge>
-                )}
-              </div>
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              {TEMPLATE_HEADERS.slice(0, 5).map((h) => (
+                <Badge key={h} variant="secondary">{h}</Badge>
+              ))}
+              <Badge variant="outline">+{TEMPLATE_HEADERS.length - 5} more</Badge>
             </div>
-            <Button onClick={downloadTemplate} className="w-full bg-accent text-accent-foreground" size="lg">
-              <Download className="w-5 h-5 mr-2" />
-              Download Template
+            <Button onClick={downloadTemplate} className="w-full bg-accent text-accent-foreground">
+              <Download className="w-4 h-4 mr-2" /> Download CSV
             </Button>
           </CardContent>
         </Card>
 
-        {/* File Upload Card */}
-        <Card className="border-2 border-border bg-muted">
-          <CardHeader className="text-center">
-            <div className="mx-auto w-16 h-16 bg-foreground text-background rounded-full flex items-center justify-center mb-4">
-              <CloudUpload className="w-8 h-8" />
-            </div>
-            <CardTitle className="text-xl text-foreground">Upload CSV File</CardTitle>
-            <CardDescription className="text-muted-foreground">
-              Select your edited CSV file to upload trainset data
-            </CardDescription>
+        {/* Upload */}
+        <Card className="glass-card p-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <FaCloudUploadAlt className="text-blue-500" /> Upload CSV
+            </CardTitle>
+            <CardDescription>📤 Validate instantly before sending</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="border-2 border-dashed border-border rounded-lg p-8 text-center bg-background hover:bg-muted transition-colors">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".csv"
-                onChange={handleFileSelect}
-                className="hidden"
-                id="csv-upload"
-              />
-              <label htmlFor="csv-upload" className="cursor-pointer flex flex-col items-center gap-3">
-                <div className="w-12 h-12 bg-muted text-muted-foreground rounded-full flex items-center justify-center">
-                  <Upload className="w-6 h-6" />
-                </div>
-                <div className="space-y-1">
-                  <span className="text-base font-medium text-foreground">
-                    {uploadedFile ? uploadedFile.name : "Click to select CSV file"}
-                  </span>
-                  <span className="text-sm text-muted-foreground block">Only .csv files are accepted</span>
-                </div>
-              </label>
+          <CardContent className="space-y-4">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv"
+              className="hidden"
+              onChange={handleFileChange}
+            />
+            <Button onClick={openFileBrowser} variant="outline" className="w-full">
+              <Upload className="w-4 h-4 mr-2" /> Choose File
+            </Button>
+            <div className="text-sm text-muted-foreground">
+              {file ? <span className="text-foreground">📄 {file.name}</span> : "No file selected"}
             </div>
 
-            <Button
-              onClick={handleUploadClick}
-              disabled={!validationResult?.isValid || isUploading || uploadSuccess}
-              className="w-full bg-primary text-primary-foreground"
-              size="lg"
-            >
-              {isUploading ? (
-                <>
-                  <div className="w-5 h-5 mr-2 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  Uploading...
-                </>
-              ) : (
-                <>
-                  <Upload className="w-5 h-5 mr-2" />
-                  Upload CSV
-                </>
-              )}
-            </Button>
+            {/* Validation status */}
+            {validation && (
+              <div>
+                {validation.isValid ? (
+                  <div className="flex items-center gap-2 text-green-600">
+                    <FaCheckCircle /> Headers OK — Ready to upload
+                  </div>
+                ) : (
+                  <div className="text-red-600 flex gap-2 items-start">
+                    <XCircle className="mt-0.5" /> <span>{validation.errors.join(", ")}</span>
+                  </div>
+                )}
+                {validation.warnings.length > 0 && (
+                  <div className="text-yellow-600 flex gap-2 items-start mt-2">
+                    <FaExclamationTriangle className="mt-0.5" />
+                    <span>{validation.warnings.join(", ")}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Preview */}
+            {previewRows && (
+              <div className="p-3 rounded-lg bg-background border border-border">
+                <div className="text-xs text-muted-foreground mb-1">👀 Preview (first {previewRows.length} rows)</div>
+                <table className="table-auto w-full text-sm">
+                  <tbody>
+                    {previewRows.map((row, i) => (
+                      <tr key={i} className={i % 2 ? "bg-muted/50" : ""}>
+                        {row.map((cell, j) => (
+                          <td key={j} className="px-2 py-1">{cell || "—"}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Button onClick={handleOpenConfirm} disabled={!validation?.isValid} className="flex-1 bg-primary text-primary-foreground">
+                🚀 Upload & Confirm
+              </Button>
+              <Button onClick={() => { setFile(null); setValidation(null); setPreviewRows(null); if (fileInputRef.current) fileInputRef.current.value = "" }} variant="outline">
+                Reset
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Validation Results */}
-      {validationResult && (
-        <Card className="border-2 border-border bg-background">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              {validationResult.isValid ? (
-                <>
-                  <CheckCircle className="w-5 h-5 text-accent" />
-                  <span className="text-accent">Validation Successful</span>
-                </>
-              ) : (
-                <>
-                  <XCircle className="w-5 h-5 text-destructive" />
-                  <span className="text-destructive">Validation Failed</span>
-                </>
-              )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {validationResult.isValid ? (
-              <Alert className="border border-accent bg-muted">
-                <CheckCircle className="w-4 h-4 text-accent" />
-                <AlertDescription className="text-foreground">
-                  CSV validation passed! All required headers are present and your file is ready for upload.
-                </AlertDescription>
-              </Alert>
-            ) : (
-              <Alert className="border border-destructive bg-muted">
-                <XCircle className="w-4 h-4 text-destructive" />
-                <AlertDescription className="text-destructive">
-                  CSV validation failed. Please fix the following issues before uploading:
-                </AlertDescription>
-              </Alert>
-            )}
+      {/* Confirmation Modal */}
+      {showConfirm && (
+        <div className="fixed inset-0 flex items-center justify-center z-50">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={handleCancelConfirm} />
+          <div className="relative max-w-lg w-full p-6 rounded-2xl glass-card border border-border">
+            <h3 className="text-xl font-bold flex items-center gap-2">
+              <FileSpreadsheet className="text-blue-500" /> Confirm Upload
+            </h3>
+            <p className="mt-2 text-muted-foreground text-sm">
+              📄 File: <span className="font-medium">{file?.name}</span>
+            </p>
+            <p className="text-muted-foreground text-sm">This will update trainset records in the database.</p>
 
-            {validationResult.errors.length > 0 && (
-              <div className="p-4 rounded-lg border border-destructive bg-muted">
-                <h4 className="font-semibold text-destructive mb-3 flex items-center gap-2">
-                  <XCircle className="w-4 h-4" />
-                  Errors that must be fixed:
-                </h4>
-                <ul className="list-disc list-inside space-y-2 text-sm text-destructive">
-                  {validationResult.errors.map((error, index) => (
-                    <li key={index}>{error}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            <label className="flex items-center gap-2 mt-4">
+              <input
+                type="checkbox"
+                checked={confirmChecked}
+                onChange={(e) => setConfirmChecked(e.target.checked)}
+                className="h-4 w-4"
+              />
+              <span className="text-sm">✅ I confirm this file is correct.</span>
+            </label>
 
-            {validationResult.warnings.length > 0 && (
-              <div className="p-4 rounded-lg border border-secondary bg-muted">
-                <h4 className="font-semibold text-secondary mb-3 flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4" />
-                  Warnings (file will still be processed):
-                </h4>
-                <ul className="list-disc list-inside space-y-2 text-sm text-secondary">
-                  {validationResult.warnings.map((warning, index) => (
-                    <li key={index}>{warning}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Upload Success */}
-      {uploadSuccess && (
-        <Card className="border-2 border-accent bg-muted">
-          <CardContent className="pt-6">
-            <Alert className="border border-accent bg-transparent">
-              <CheckCircle className="w-4 h-4 text-accent" />
-              <AlertDescription className="text-foreground">
-                🎉 File uploaded successfully! Your trainset data has been processed and is now available in the system.
-              </AlertDescription>
-            </Alert>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Confirmation Dialog */}
-      {showConfirmation && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-black text-white rounded-lg p-8 max-w-md mx-4 border border-gray-600">
-            <div className="text-center space-y-4">
-              <div className="w-16 h-16 bg-gray-800  rounded-full flex items-center justify-center mx-auto">
-                <FileSpreadsheet className="w-8 h-8" />
-              </div>
-              <h3 className="text-xl font-semibold ">Confirm Upload</h3>
-              <p className="">
-                Are you sure you want to upload <span className="font-medium text-white">{uploadedFile?.name}</span>? 
-                This will process and store the trainset data in the system.
-              </p>
-              <div className="flex gap-4 pt-4">
-                <Button
-                  onClick={handleCancelUpload}
-                  variant="outline"
-                  className="flex-1 bg-transparent border-gray-600 text-white hover:bg-gray-800"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleConfirmUpload}
-                  className="flex-1  hover:bg-gray-200"
-                >
-                  OK
-                </Button>
-              </div>
+            <div className="flex gap-2 mt-4">
+              <Button onClick={handleSend} disabled={!confirmChecked || isSending} className="flex-1 bg-green-600 text-white">
+                {isSending ? "⏳ Sending..." : "📤 Send to Database"}
+              </Button>
+              <Button onClick={handleCancelConfirm} variant="outline">Cancel</Button>
             </div>
+
+            {sendError && <div className="mt-2 text-red-600 text-sm">❌ {sendError}</div>}
+            {sendSuccess && <div className="mt-2 text-green-600 text-sm">🎉 Success! File processed.</div>}
           </div>
         </div>
       )}
