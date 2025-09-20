@@ -73,7 +73,7 @@ export const loginUser = async (
         const token = jwt.sign(
             { userId: user.id, email: user.email },
             JWT_SECRET,
-            { expiresIn: "1h" }
+            { expiresIn: "24h" }
         );
 
         logger.info("[loginUser] Login successful, token generated", { userId: user.id });
