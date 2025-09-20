@@ -13,9 +13,17 @@ const normalizeHeader = (header: string): string => {
 
 const parseBoolean = (value: unknown): boolean | undefined => {
   if (value === undefined || value === null) return undefined;
-  const v = String(value).trim().toLowerCase();
-  if (["true", "1", "yes", "y"].includes(v)) return true;
-  if (["false", "0", "no", "n"].includes(v)) return false;
+  
+  // Clean the value - remove quotes and trim whitespace
+  let v = String(value).trim();
+  if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+    v = v.slice(1, -1).trim();
+  }
+  
+  // Convert to lowercase for comparison
+  const lowerV = v.toLowerCase();
+  if (["true", "1", "yes", "y"].includes(lowerV)) return true;
+  if (["false", "0", "no", "n"].includes(lowerV)) return false;
   return undefined;
 };
 
@@ -37,18 +45,19 @@ const parseDateFlexible = (value: unknown): Date | undefined => {
 const aliasToCanonical: Record<string, string> = {
   // Train
   trainname: "trainname",
-  train: "trainname",
+  train: "trainname", 
   trainid: "trainID",
-  // Fitness (align with Prisma schema)
+  currentdate: "current_date",
+  // Fitness (align with Prisma schema) - EXACT MATCHES FIRST
   rollingstockfitnessstatus: "rollingStockFitnessStatus",
-  signallingfitnessstatus: "signallingFitnessStatus",
+  signallingfitnessstatus: "signallingFitnessStatus", 
   telecomfitnessstatus: "telecomFitnessStatus",
   rollingstockfitnessexpirydate: "rollingStockFitnessExpiryDate",
   signallingfitnessexpirydate: "signallingFitnessExpiryDate",
   telecomfitnessexpirydate: "telecomFitnessExpiryDate",
   // Job cards
   jobcardstatus: "jobCardStatus",
-  openjobcards: "openJobCards",
+  openjobcards: "openJobCards", 
   closedjobcards: "closedJobCards",
   lastjobcardupdate: "lastJobCardUpdate",
   // Branding
@@ -57,11 +66,12 @@ const aliasToCanonical: Record<string, string> = {
   exposurehoursaccrued: "exposureHoursAccrued",
   exposurehourstarget: "exposureHoursTarget",
   exposuredailyquota: "exposureDailyQuota",
-  // Mileage
+  // Mileage  
+  totalmileagekm: "totalMileageKM",
   mileagesincelastservicekm: "mileageSinceLastServiceKM",
   mileagebalancevariance: "mileageBalanceVariance",
-  brakepadwearpercent: "brakepadWearPercent",
-  hvacwearpercent: "hvacWearPercent",
+  brakepadwear: "brakepadWearPercent",
+  hvacwear: "hvacWearPercent",
   // Cleaning
   cleaningrequired: "cleaningRequired",
   cleaningslotstatus: "cleaningSlotStatus",
@@ -74,11 +84,23 @@ const aliasToCanonical: Record<string, string> = {
   stablingsequenceorder: "stablingSequenceOrder",
   // Operations
   operationalstatus: "operationalStatus",
-  reasonforstatus: "reasonForStatus",
+  reasonforstatus: "reasonForStatus", 
   rank: "rank",
   score: "score",
-  rlpriority: "rl_priority",
-  rl_priority: "rl_priority",
+  rlpriority: "rl_priority"
+};
+
+const cleanStringValue = (value: unknown): string => {
+  if (value === undefined || value === null) return '';
+  
+  let str = String(value).trim();
+  
+  // Remove surrounding quotes if present
+  if ((str.startsWith('"') && str.endsWith('"')) || (str.startsWith("'") && str.endsWith("'"))) {
+    str = str.slice(1, -1);
+  }
+  
+  return str.trim();
 };
 
 const normalizeRow = (raw: CSVRow, rowIndex: number): CSVRow => {
@@ -86,20 +108,27 @@ const normalizeRow = (raw: CSVRow, rowIndex: number): CSVRow => {
   
   for (const [k, v] of Object.entries(raw)) {
     const nk = normalizeHeader(k);
-    // First try exact alias match
-    let canonical = aliasToCanonical[nk] || nk;
-    // Heuristic mappings for common abbreviated headers
-    if (!aliasToCanonical[nk]) {
+    let canonical = aliasToCanonical[nk];
+    
+    if (!canonical) {
+      // If no exact match, use the normalized key as-is initially
+      canonical = nk;
+      
+      // Only apply heuristic mappings if we don't have an exact match
       const contains = (s: string) => nk.includes(s);
-      if (contains("trainid")) canonical = "trainID";
-      else if (contains("trainname") || nk === "train") canonical = "trainname";
-      else if ((contains("rolling") && contains("fitness")) || contains("rollingstock")) canonical = "rollingStockFitnessStatus";
-      else if (contains("signalling") && contains("fitness")) canonical = "signallingFitnessStatus";
-      else if (contains("telecom") && contains("fitness")) canonical = "telecomFitnessStatus";
-      else if (contains("rolling") && contains("fitness") && contains("expiry")) canonical = "rollingStockFitnessExpiryDate";
-      else if (contains("signalling") && contains("fitness") && contains("expiry")) canonical = "signallingFitnessExpiryDate";
-      else if (contains("telecom") && contains("fitness") && contains("expiry")) canonical = "telecomFitnessExpiryDate";
-      else if (contains("job") && contains("status")) canonical = "jobCardStatus";
+      
+      if (contains("trainid") && !contains("fitness")) canonical = "trainID";
+      else if ((contains("trainname") || nk === "train") && !contains("fitness")) canonical = "trainname";
+      else if (contains("currentdate")) canonical = "current_date";
+      // Be very specific about fitness mappings to avoid conflicts
+      else if (nk === "rollingstockfitnessstatus") canonical = "rollingStockFitnessStatus";
+      else if (nk === "signallingfitnessstatus") canonical = "signallingFitnessStatus"; 
+      else if (nk === "telecomfitnessstatus") canonical = "telecomFitnessStatus";
+      else if (nk === "rollingstockfitnessexpirydate") canonical = "rollingStockFitnessExpiryDate";
+      else if (nk === "signallingfitnessexpirydate") canonical = "signallingFitnessExpiryDate";
+      else if (nk === "telecomfitnessexpirydate") canonical = "telecomFitnessExpiryDate";
+      // Other mappings...
+      else if (contains("job") && contains("status") && !contains("card")) canonical = "jobCardStatus";
       else if (contains("open") && contains("job")) canonical = "openJobCards";
       else if (contains("closed") && contains("job")) canonical = "closedJobCards";
       else if (contains("last") && contains("job") && contains("update")) canonical = "lastJobCardUpdate";
@@ -126,38 +155,50 @@ const normalizeRow = (raw: CSVRow, rowIndex: number): CSVRow => {
       else if (nk === "rank") canonical = "rank";
       else if (nk === "score") canonical = "score";
       else if (contains("rl") && contains("priority")) canonical = "rl_priority";
-      else if (nk === "rlpriority") canonical = "rl_priority"; // Additional catch for "RL Priority"
+      else if (nk === "rlpriority") canonical = "rl_priority";
     }
-    normalized[canonical] = String(v ?? "").trim();
+    // Clean the value first
+    normalized[canonical] = cleanStringValue(v);
   }
 
-  // Convert booleans
+  // Convert booleans using the improved parser
   const booleanFields = [
     "rollingStockFitnessStatus",
-    "signallingFitnessStatus",
+    "signallingFitnessStatus", 
     "telecomFitnessStatus",
     "brandingActive",
     "cleaningRequired",
   ];
-  for (const b of booleanFields) {
-    const val = parseBoolean((normalized as any)[b]);
-    if (val !== undefined) (normalized as any)[b] = String(val);
+  
+  for (const field of booleanFields) {
+    if (normalized[field] !== undefined && normalized[field] !== '') {
+      const boolValue = parseBoolean(normalized[field]);
+      if (boolValue !== undefined) {
+        normalized[field] = String(boolValue);
+      }
+    }
   }
 
-  // Normalize date fields to ISO strings understood by new Date()
+  // Normalize date fields to ISO strings
   const dateFields = [
+    "current_date",
     "rollingStockFitnessExpiryDate",
-    "signallingFitnessExpiryDate",
+    "signallingFitnessExpiryDate", 
     "telecomFitnessExpiryDate",
     "lastJobCardUpdate",
     "lastCleanedDate",
   ];
-  for (const d of dateFields) {
-    const parsed = parseDateFlexible((normalized as any)[d]);
-    if (parsed) (normalized as any)[d] = parsed.toISOString();
+  
+  for (const field of dateFields) {
+    if (normalized[field] && normalized[field] !== '') {
+      const parsedDate = parseDateFlexible(normalized[field]);
+      if (parsedDate) {
+        normalized[field] = parsedDate.toISOString();
+      }
+    }
   }
 
-  // Ensure canonical train fields casing
+  // Ensure canonical train fields exist
   if (normalized.trainname && !normalized.trainID && normalized.trainid) {
     normalized.trainID = normalized.trainid;
   }
