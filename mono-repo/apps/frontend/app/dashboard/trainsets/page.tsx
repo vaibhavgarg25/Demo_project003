@@ -1,50 +1,58 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { CompactTable } from "@/components/CompactTable"
 import { TrainsetModal } from "@/components/TrainsetModal"
 import { fetchTrainsets, type Trainset } from "@/lib/mock-data"
 import { daysUntil } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Grid, List, Search, Settings, Check } from "lucide-react"
+import { Grid, List, Search, Settings, AlertTriangle, CheckCircle, Clock } from "lucide-react"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuCheckboxItem,
   DropdownMenuTrigger,
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 
+import { FaTools, FaShieldAlt, FaBolt, FaTrain } from "react-icons/fa"
+import { FiTruck, FiActivity } from "react-icons/fi"
+import { MdDirectionsRun, MdOutlineCleaningServices } from "react-icons/md"
+import { GiHealthPotion, GiClockwork } from "react-icons/gi"
+import { TbTrain } from "react-icons/tb"
+
+/* -------------------------
+   Helpers
+   ------------------------- */
+
+const formatKm = (n: number) =>
+  n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M km` : n >= 1_000 ? `${(n / 1_000).toFixed(1)}k km` : `${n} km`
+
 const CircularProgress = ({
   value,
-  size = 60,
-  strokeWidth = 6,
+  size = 80,
+  strokeWidth = 8,
+  label = "Health",
 }: {
   value: number
   size?: number
   strokeWidth?: number
+  label?: string
 }) => {
   const radius = (size - strokeWidth) / 2
-  const circumference = radius * 2 * Math.PI
-  const strokeDasharray = circumference
-  const strokeDashoffset = circumference - (value / 100) * circumference
+  const circumference = 2 * Math.PI * radius
+  const dash = (value / 100) * circumference
 
-  // choose color based on thresholds
-  let colorClass = "text-emerald-500" // default green
-  if (value <= 33) {
-    colorClass = "text-red-500"
-  } else if (value <= 66) {
-    colorClass = "text-orange-500"
+  const getColorClass = (val: number) => {
+    if (val >= 85) return "text-green-500"
+    if (val >= 70) return "text-amber-500"
+    return "text-red-500"
   }
 
   return (
-    <div className="relative inline-flex items-center justify-center">
+    <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="transform -rotate-90">
-        {/* Background track */}
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -52,9 +60,8 @@ const CircularProgress = ({
           stroke="currentColor"
           strokeWidth={strokeWidth}
           fill="none"
-          className="text-muted opacity-20"
+          className="text-muted-foreground/20"
         />
-        {/* Progress circle */}
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -62,33 +69,114 @@ const CircularProgress = ({
           stroke="currentColor"
           strokeWidth={strokeWidth}
           fill="none"
-          strokeDasharray={strokeDasharray}
-          strokeDashoffset={strokeDashoffset}
-          className={`${colorClass} transition-all duration-300 ease-in-out`}
+          strokeDasharray={`${dash} ${circumference - dash}`}
           strokeLinecap="round"
+          className={`${getColorClass(value)} health-ring`}
         />
       </svg>
-      <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-sm font-bold text-foreground">{value}%</span>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <div className="text-lg font-bold text-foreground">{Math.round(value)}%</div>
+        <div className="text-xs text-muted-foreground">{label}</div>
       </div>
     </div>
   )
 }
 
-const MiniChart = ({ data, color = "bg-chart-1" }: { data: number[]; color?: string }) => {
-  const max = Math.max(...data)
-  return (
-    <div className="flex items-end gap-0.5 h-8">
-      {data.map((value, index) => (
-        <div
-          key={index}
-          className={`${color} rounded-sm w-1.5 transition-all duration-300`}
-          style={{ height: `${(value / max) * 100}%` }}
-        />
-      ))}
-    </div>
-  )
+/* -------------------------
+   Health + recommendation
+   ------------------------- */
+
+function daysUntilSafe(d: string | Date) {
+  try {
+    return daysUntil(d as any)
+  } catch {
+    return Number.POSITIVE_INFINITY
+  }
 }
+
+function computeRawHealth(trainset: any): number {
+  const safeNum = (v: any, cap = 100) => (typeof v === "number" && !Number.isNaN(v) ? Math.max(0, Math.min(v, cap)) : 0)
+
+  const fitnessFlags = [
+    trainset.fitness?.rollingStockFitnessStatus,
+    trainset.fitness?.signallingFitnessStatus,
+    trainset.fitness?.telecomFitnessStatus,
+  ]
+  const fitnessPopulated = fitnessFlags.filter((f) => f !== undefined && f !== null).length
+  const fitnessTrue = fitnessFlags.filter((f) => f === true).length
+  const fitnessPercent = fitnessPopulated ? (fitnessTrue / fitnessPopulated) * 100 : 50
+
+  const expiryDates = [
+    trainset.fitness?.rollingStockFitnessExpiryDate,
+    trainset.fitness?.signallingFitnessExpiryDate,
+    trainset.fitness?.telecomFitnessExpiryDate,
+  ].filter(Boolean)
+  const minExpiryDays = expiryDates.length
+    ? Math.min(...expiryDates.map((d: any) => daysUntilSafe(d)))
+    : Number.POSITIVE_INFINITY
+  let expiryPenalty = 0
+  if (minExpiryDays <= 0) expiryPenalty = 40
+  else if (minExpiryDays <= 7) expiryPenalty = 20
+  else if (minExpiryDays <= 30) expiryPenalty = 10
+
+  const openJobs = trainset.jobCardStatus?.openJobCards ?? 0
+  const jobPenalty = Math.min(openJobs * 3, 30)
+
+  const mileage = safeNum(trainset.mileage?.totalMileageKM ?? 0, 1_000_000)
+  const mileageScore = 100 * (1 / (1 + Math.pow(mileage / 180000, 1.2)))
+
+  const brake = safeNum(trainset.mileage?.brakepadWearPercent ?? 0, 100)
+  const hvac = safeNum(trainset.mileage?.hvacWearPercent ?? 0, 100)
+  const wearScore = brake || hvac ? Math.max(0, 100 - (brake + hvac) / 2) : 70
+
+  const cleaningPenalty = trainset.cleaning?.cleaningRequired ? 10 : 0
+  const brandingBoost = trainset.branding?.brandingActive ? 4 : 0
+  const opScore = safeNum(trainset.operations?.score ?? 70, 100)
+
+  const raw =
+    0.28 * fitnessPercent +
+    0.22 * mileageScore +
+    0.2 * wearScore +
+    0.2 * opScore +
+    0.1 * 100 -
+    expiryPenalty -
+    jobPenalty -
+    cleaningPenalty +
+    brandingBoost
+
+  return Math.round(Math.max(0, Math.min(100, raw)))
+}
+
+function mapToDisplayHealth(raw: number): number {
+  return Math.round(70 + (raw / 100) * 20)
+}
+
+function getHealthScoreFromModel(trainset: any): number {
+  return mapToDisplayHealth(computeRawHealth(trainset))
+}
+
+function getRecommendationReason(trainset: any): string {
+  const openJobs = trainset.jobCardStatus?.openJobCards ?? 0
+  const totalMileage = trainset.mileage?.totalMileageKM ?? 0
+  const soon = [
+    trainset.fitness?.rollingStockFitnessExpiryDate,
+    trainset.fitness?.signallingFitnessExpiryDate,
+    trainset.fitness?.telecomFitnessExpiryDate,
+  ]
+    .filter(Boolean)
+    .map((d: any) => daysUntilSafe(d))
+    .reduce((a, b) => Math.min(a, b), Number.POSITIVE_INFINITY)
+
+  if (soon <= 0) return `⚠️ Fitness expired — ground until recertified`
+  if (openJobs > 5) return `🛠 ${openJobs} open jobs — prioritize maintenance`
+  if (totalMileage > 250000) return `🚄 High mileage (${Math.round(totalMileage)} km) — inspect`
+
+  return `ℹ️ ${openJobs} open jobs • ${Math.round(totalMileage).toLocaleString()} km`
+}
+
+/* -------------------------
+   Main page
+   ------------------------- */
 
 export default function TrainsetsPage() {
   const [trainsets, setTrainsets] = useState<Trainset[]>([])
@@ -97,187 +185,113 @@ export default function TrainsetsPage() {
   const [selectedTrainset, setSelectedTrainset] = useState<Trainset | null>(null)
   const [viewMode, setViewMode] = useState<"cards" | "list">("cards")
   const [searchQuery, setSearchQuery] = useState("")
-  const [visibleColumns, setVisibleColumns] = useState({
-    id: true,
-    status: true,
-    fitnessDays: true,
-    openJobs: true,
-    mileage: true,
-    position: false,
-  })
-
-  // New filters moved to top
   const [statusFilter, setStatusFilter] = useState<"All" | "Active" | "Standby" | "Maintenance" | "OutOfService">("All")
   const [fitnessFilter, setFitnessFilter] = useState<"All" | "High" | "Medium" | "Low">("All")
 
   useEffect(() => {
-    const loadTrainsets = async () => {
+    let mounted = true
+    const load = async () => {
       try {
         setLoading(true)
         const data = await fetchTrainsets()
-        setTrainsets(data)
+        if (!mounted) return
+        setTrainsets(data || [])
         setError(null)
-      } catch (err) {
-        console.error("Failed to load trainsets:", err)
-        setError("Failed to load trainset data")
+      } catch (e) {
+        console.error(e)
+        setError("Failed to load trainsets")
       } finally {
-        setLoading(false)
+        if (mounted) setLoading(false)
       }
     }
-
-    loadTrainsets()
+    load()
+    return () => {
+      mounted = false
+    }
   }, [])
 
-  // Function to get status reason
-  const getStatusReason = (trainset: Trainset) => {
-    const operationalStatus = trainset.operations?.operationalStatus?.toLowerCase() || trainset.status.toLowerCase()
-    const openJobs = trainset.jobCardStatus?.openJobCards || 0
-    const brakeWear = trainset.mileage?.brakepadWearPercent || 0
-    const hvacWear = trainset.mileage?.hvacWearPercent || 0
-    
-    // Check fitness status
-    const rollingStockExpiry = trainset.fitness?.rollingStockFitnessExpiryDate 
-      ? daysUntil(trainset.fitness.rollingStockFitnessExpiryDate) 
-      : -1
-    const signallingExpiry = trainset.fitness?.signallingFitnessExpiryDate 
-      ? daysUntil(trainset.fitness.signallingFitnessExpiryDate) 
-      : -1
-    const telecomExpiry = trainset.fitness?.telecomFitnessExpiryDate 
-      ? daysUntil(trainset.fitness.telecomFitnessExpiryDate) 
-      : -1
-    
-    // Determine reason based on status and conditions
-    switch (operationalStatus) {
-      case "in_service":
-      case "active":
-        if (openJobs > 0) return `${openJobs} pending job cards`
-        return "Operational"
-        
-      case "under_maintenance":
-      case "maintenance":
-        if (brakeWear > 80) return "Brake maintenance required"
-        if (hvacWear > 80) return "HVAC maintenance required"
-        if (openJobs > 5) return "Multiple maintenance jobs"
-        if (rollingStockExpiry < 0) return "Fitness certificate expired"
-        return "Scheduled maintenance"
-        
-      case "standby":
-        if (rollingStockExpiry < 7 && rollingStockExpiry > 0) return "Fitness expiring soon"
-        if (openJobs > 0) return "Minor maintenance pending"
-        return "Ready for deployment"
-        
-      case "out_of_service":
-      case "outofservice":
-        if (rollingStockExpiry < 0) return "Fitness certificate expired"
-        if (signallingExpiry < 0) return "Signalling fitness expired"
-        if (telecomExpiry < 0) return "Telecom fitness expired"
-        if (brakeWear > 90 || hvacWear > 90) return "Critical wear condition"
-        if (openJobs > 10) return "Extensive maintenance required"
-        return "Out of service"
-        
-      default:
-        return "Status unknown"
-    }
-  }
-  const getHealthScore = (trainset: Trainset) => {
-    let score = 0
-    
-    // Fitness status scoring (40 points total)
-    if (trainset.fitness?.rollingStockFitnessStatus) score += 15
-    if (trainset.fitness?.signallingFitnessStatus) score += 15
-    if (trainset.fitness?.telecomFitnessStatus) score += 10
-    
-    // Job card status (25 points)
-    const openJobs = trainset.jobCardStatus?.openJobCards || 0
-    if (openJobs === 0) score += 25
-    else if (openJobs <= 2) score += 15
-    else if (openJobs <= 5) score += 5
-    
-    // Mileage condition (20 points)
-    const mileageKM = trainset.mileage?.totalMileageKM || 0
-    if (mileageKM < 50000) score += 20
-    else if (mileageKM < 100000) score += 15
-    else if (mileageKM < 200000) score += 10
-    else if (mileageKM < 300000) score += 5
-    
-    // Wear percentage (15 points)
-    const brakeWear = trainset.mileage?.brakepadWearPercent || 0
-    const hvacWear = trainset.mileage?.hvacWearPercent || 0
-    const avgWear = (brakeWear + hvacWear) / 2
-    if (avgWear < 25) score += 15
-    else if (avgWear < 50) score += 10
-    else if (avgWear < 75) score += 5
-    
-    return Math.min(100, score)
-  }
-
-  // apply search + status + fitness filters, then sort by health score in descending order
-  const filteredTrainsets = trainsets
-    .map(trainset => ({
-      ...trainset,
-      health_score: getHealthScore(trainset)
-    }))
-    .filter(
-      (trainset) =>
-        trainset.trainname.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        trainset.trainID.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (trainset.operations?.operationalStatus || trainset.status).toLowerCase().includes(searchQuery.toLowerCase()),
-    )
-    .filter((t) => {
-      if (statusFilter === "All") return true
-      const operationalStatus = t.operations?.operationalStatus?.toLowerCase()
-      const legacyStatus = t.status
-      
-      switch (statusFilter) {
-        case "Active":
-          return operationalStatus === "in_service" || legacyStatus === "Active"
-        case "Standby":
-          return operationalStatus === "standby" || legacyStatus === "Standby"
-        case "Maintenance":
-          return operationalStatus === "under_maintenance" || legacyStatus === "Maintenance"
-        case "OutOfService":
-          return legacyStatus === "OutOfService" || (!operationalStatus || operationalStatus === "out_of_service")
-        default:
-          return true
+  useEffect(() => {
+    const handleEscKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && selectedTrainset) {
+        setSelectedTrainset(null)
       }
-    })
-    .filter((t) => {
-      if (fitnessFilter === "All") return true
-      const score = t.health_score || 0
-      if (fitnessFilter === "High") return score >= 80
-      if (fitnessFilter === "Medium") return score >= 60 && score < 80
-      return score < 60
-    })
-    .sort((a, b) => b.health_score - a.health_score) // Sort by health score descending
-    .slice(0, 13) // Show only top 13 trains
+    }
 
-  const handleRowClick = (trainset: Trainset) => {
-    setSelectedTrainset(trainset)
-  }
+    document.addEventListener("keydown", handleEscKey)
+    return () => {
+      document.removeEventListener("keydown", handleEscKey)
+    }
+  }, [selectedTrainset])
 
-  const handleCloseModal = () => {
-    setSelectedTrainset(null)
-  }
+  const filteredTrainsets = useMemo(() => {
+    return (trainsets || [])
+      .map((t) => ({
+        ...t,
+        raw_health: computeRawHealth(t),
+        health_score: getHealthScoreFromModel(t),
+        recommendation: getRecommendationReason(t),
+      }))
+      .filter((t) => {
+        const q = searchQuery.trim().toLowerCase()
+        if (!q) return true
+        return (
+          (t.trainname || "").toLowerCase().includes(q) ||
+          (t.trainID || "").toLowerCase().includes(q) ||
+          (t.operations?.operationalStatus || t.status || "").toString().toLowerCase().includes(q)
+        )
+      })
+      .filter((t) => {
+        if (statusFilter === "All") return true
+        const s = (t.operations?.operationalStatus || t.status || "").toString().toLowerCase()
+        if (statusFilter === "Active") return s === "in_service" || t.status === "Active"
+        if (statusFilter === "Standby") return s === "standby" || t.status === "Standby"
+        if (statusFilter === "Maintenance") return s.includes("maint") || t.status === "Maintenance"
+        if (statusFilter === "OutOfService")
+          return s === "out_of_service" || t.status === "OutOfService" || s.includes("out")
+        return true
+      })
+      .filter((t) => {
+        if (fitnessFilter === "All") return true
+        const s = t.health_score || 0
+        if (fitnessFilter === "High") return s >= 80
+        if (fitnessFilter === "Medium") return s >= 60 && s < 80
+        return s < 60
+      })
+      .sort((a, b) => (b.raw_health || 0) - (a.raw_health || 0))
+  }, [trainsets, searchQuery, statusFilter, fitnessFilter])
 
-  const getHealthScoreColor = (score: number) => {
-    if (score >= 80) return "text-emerald-600 dark:text-emerald-400"
-    if (score >= 60) return "text-yellow-600 dark:text-yellow-400"
-    return "text-red-600 dark:text-red-400"
-  }
+  const totalTrainsets = trainsets.length
+  const inServiceTrains = trainsets.filter(
+    (t) =>
+      t.operations?.operationalStatus?.toString()?.toLowerCase() === "in_service" || (t as any).status === "Active",
+  ).length
+  const maintenanceTrainsets = trainsets.filter(
+    (t) =>
+      t.operations?.operationalStatus?.toString()?.toLowerCase()?.includes("maint") ||
+      (t as any).status === "Maintenance",
+  ).length
+  const standbyTrainsets = trainsets.filter(
+    (t) => t.operations?.operationalStatus?.toString()?.toLowerCase() === "standby" || (t as any).status === "Standby",
+  ).length
 
+  const availabilityRate = totalTrainsets > 0 ? Math.round((inServiceTrains / totalTrainsets) * 100) : 0
+  const totalOpenJobs = trainsets.reduce((s, t) => s + (t.jobCardStatus?.openJobCards || 0), 0)
+  const fitnessExpiringSoon = trainsets.filter((t) => {
+    if (!t.fitness?.rollingStockFitnessExpiryDate) return false
+    const d = daysUntilSafe(t.fitness.rollingStockFitnessExpiryDate as any)
+    return d <= 30 && d > 0
+  }).length
+
+  /* -------------------
+     Render
+     ------------------- */
   if (loading) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="container mx-auto px-6 py-8 space-y-8">
-          <div className="text-center space-y-4">
-            <h1 className="text-3xl font-bold text-foreground">Trainset Management</h1>
-            <p className="text-muted-foreground">Loading trainset data...</p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="bg-card rounded-lg h-80 animate-pulse border"></div>
-            ))}
-          </div>
+      <div className="min-h-screen bg-background p-6 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <div className="text-xl font-semibold text-foreground">🚆 Loading trainsets…</div>
+          <div className="text-sm text-muted-foreground">Fetching fleet data</div>
         </div>
       </div>
     )
@@ -285,13 +299,14 @@ export default function TrainsetsPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="container mx-auto px-6 py-8 text-center">
-          <h1 className="text-3xl font-bold text-foreground mb-4">Trainset Management</h1>
-          <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-6 max-w-md mx-auto">
-            <p className="text-destructive mb-4">{error}</p>
-            <Button onClick={() => window.location.reload()}>Retry Loading</Button>
-          </div>
+      <div className="min-h-screen bg-background p-6">
+        <div className="glass-card p-8 max-w-md mx-auto text-center">
+          <AlertTriangle className="w-12 h-12 text-destructive mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-destructive mb-2">❌ Error Loading Data</h3>
+          <p className="text-muted-foreground mb-4">{error}</p>
+          <Button onClick={() => window.location.reload()} className="w-full">
+            <FiActivity className="w-4 h-4 mr-2" /> Retry
+          </Button>
         </div>
       </div>
     )
@@ -299,426 +314,219 @@ export default function TrainsetsPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-6 py-8 space-y-8">
-        <div className="text-center space-y-4">
-          <h1 className="text-3xl font-bold text-foreground">Top 13 Trainsets</h1>
-          <p className="text-muted-foreground">
-            Showing top 13 trains ranked by health score (fitness status, job cards, mileage, and wear condition)
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          <div className="bg-muted/40 rounded-xl p-4 text-center hover:shadow-md hover:bg-muted/60 transition-all">
-            <div className="text-2xl font-bold text-foreground">{trainsets.length}</div>
-            <div className="text-sm text-muted-foreground">Total Trainsets</div>
-            <div className="mt-3 h-1 bg-chart-2 rounded-full"></div>
-          </div>
-          <div className="bg-muted/40 rounded-xl p-4 text-center hover:shadow-md hover:bg-muted/60 transition-all">
-            <div className="text-2xl font-bold text-chart-3">
-              {trainsets.filter((t) => 
-                t.operations?.operationalStatus?.toLowerCase() === "in_service" || 
-                t.status === "Active"
-              ).length}
-            </div>
-            <div className="text-sm text-muted-foreground">In Service</div>
-            <div className="mt-3 h-1 bg-chart-3 rounded-full"></div>
-          </div>
-          <div className="bg-muted/40 rounded-xl p-4 text-center hover:shadow-md hover:bg-muted/60 transition-all">
-            <div className="text-2xl font-bold text-secondary">
-              {trainsets.filter((t) => 
-                t.operations?.operationalStatus?.toLowerCase() === "under_maintenance" || 
-                t.status === "Maintenance"
-              ).length}
-            </div>
-            <div className="text-sm text-muted-foreground">In Maintenance</div>
-            <div className="mt-3 h-1 bg-secondary rounded-full"></div>
-          </div>
-          <div className="bg-muted/40 rounded-xl p-4 text-center hover:shadow-md hover:bg-muted/60 transition-all">
-            <div className="text-2xl font-bold text-destructive">
-              {trainsets.reduce((sum, t) => sum + (t.jobCardStatus?.openJobCards || 0), 0)}
-            </div>
-            <div className="text-sm text-muted-foreground">Open Jobs</div>
-            <div className="mt-3 h-1 bg-destructive rounded-full"></div>
-          </div>
-        </div>
+      {/* Header */}
+      <div className="bg-background">
+  <div className="max-w-7xl mx-auto px-6 py-6">
+    <div className="flex items-center justify-between">
+      <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
+        <TbTrain className="text-teal-500" /> Trainset Fleet Management
+      </h1>
+      <div className="text-right">
+        <div className="text-xl font-semibold text-green-600">{availabilityRate}%</div>
+        <div className="text-sm text-muted-foreground">Fleet Availability</div>
+      </div>
+    </div>
+  </div>
+</div>
 
 
-        {/* Top controls bar (search + view toggles + status/fitness/select + settings) */}
-        <div className="bg-muted/40 rounded-xl p-6 shadow-sm">
-          <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
-            <div className="flex-1 max-w-md">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search trainsets..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 bg-background border-input"
-                />
+      {/* Metrics */}
+      <div className="max-w-7xl mx-auto p-6 space-y-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="metric-card group hover:scale-105">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm text-muted-foreground mb-1">Total Fleet</div>
+                <div className="text-3xl font-bold text-foreground">{totalTrainsets}</div>
+                <div className="text-xs text-muted-foreground mt-1">🚉 Active trainsets</div>
+              </div>
+              <div className="p-3 bg-primary/10 rounded-full">
+                <FaTrain className="w-6 h-6 text-teal-600 dark:text-teal-400" />
               </div>
             </div>
+          </div>
 
-            <div className="flex items-center gap-4">
-              <span className="text-sm text-muted-foreground">
-                {filteredTrainsets.length} of {Math.min(13, trainsets.length)} top trains
-              </span>
+          <div className="metric-card group hover:scale-105">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm text-muted-foreground mb-1">In Service</div>
+                <div className="text-3xl font-bold text-green-600">{inServiceTrains}</div>
+                <div className="text-xs text-green-600/70 mt-1">🟢 {availabilityRate}% availability</div>
+              </div>
+              <div className="p-3 bg-green-100 rounded-full">
+                <CheckCircle className="w-6 h-6 text-green-600" />
+              </div>
+            </div>
+          </div>
 
-              <div className="flex items-center bg-background  rounded-lg p-1">
+          <div className="metric-card group hover:scale-105">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm text-muted-foreground mb-1">Maintenance</div>
+                <div className="text-3xl font-bold text-amber-600">{maintenanceTrainsets}</div>
+                <div className="text-xs text-muted-foreground mt-1">🛠 {standbyTrainsets} on standby</div>
+              </div>
+              <div className="p-3 bg-amber-100 rounded-full">
+                <FaTools className="w-6 h-6 text-amber-600" />
+              </div>
+            </div>
+          </div>
+
+          <div className="metric-card group hover:scale-105">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm text-muted-foreground mb-1">Open Jobs</div>
+                <div className="text-3xl font-bold text-red-600">{totalOpenJobs}</div>
+                <div className="text-xs text-muted-foreground mt-1">⏳ {fitnessExpiringSoon} fitness expiring</div>
+              </div>
+              <div className="p-3 bg-red-100 rounded-full">
+                <Clock className="w-6 h-6 text-red-600" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div className="glass-card p-6">
+          <div className="flex flex-col lg:flex-row gap-6 items-start lg:items-center justify-between">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="🔍 Search by name, ID, or status..."
+                value={searchQuery}
+                onChange={(e: any) => setSearchQuery(e.target.value)}
+                className="pl-10 h-11"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center bg-muted rounded-lg p-1 border">
                 <Button
                   variant={viewMode === "cards" ? "default" : "ghost"}
                   size="sm"
                   onClick={() => setViewMode("cards")}
-                  className="flex items-center gap-2"
+                  className="gap-2"
                 >
-                  <Grid className="w-4 h-4" />
-                  Cards
+                  <Grid className="w-4 h-4" /> 📇 Cards
                 </Button>
                 <Button
                   variant={viewMode === "list" ? "default" : "ghost"}
                   size="sm"
                   onClick={() => setViewMode("list")}
-                  className="flex items-center gap-2"
+                  className="gap-2"
                 >
-                  <List className="w-4 h-4" />
-                  List
+                  <List className="w-4 h-4" /> 📑 List
                 </Button>
               </div>
 
-              {/* Status filter (moved to top) */}
-              <div>
-                <label className="sr-only">Status</label>
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value as "All" | "Active" | "Standby" | "Maintenance" | "OutOfService")}
-                  className="h-9 px-3 rounded-md  bg-background text-sm border border-input"
-                >
-                  <option value="All">All Status</option>
-                  <option value="Active">Active</option>
-                  <option value="Standby">Standby</option>
-                  <option value="Maintenance">Maintenance</option>
-                  <option value="OutOfService">Out of Service</option>
-                </select>
-              </div>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as any)}
+                className="h-10 px-4 rounded-md bg-background border border-border text-foreground"
+              >
+                <option value="All">All Status</option>
+                <option value="Active">🟢 Active</option>
+                <option value="Standby">🟡 Standby</option>
+                <option value="Maintenance">🛠 Maintenance</option>
+                <option value="OutOfService">🔴 Out of Service</option>
+              </select>
 
-              {/* Fitness filter (moved to top) */}
-              <div>
-                <label className="sr-only">Fitness</label>
-                <select
-                  value={fitnessFilter}
-                  onChange={(e) => setFitnessFilter(e.target.value as any)}
-                  className="h-9 px-3 rounded-md  bg-background text-sm border border-input"
-                >
-                  <option value="All">All Fitness</option>
-                  <option value="High">High</option>
-                  <option value="Medium">Medium</option>
-                  <option value="Low">Low</option>
-                </select>
-              </div>
+              <select
+                value={fitnessFilter}
+                onChange={(e) => setFitnessFilter(e.target.value as any)}
+                className="h-10 px-4 rounded-md bg-background border border-border text-foreground"
+              >
+                <option value="All">All Health</option>
+                <option value="High">💪 High (80%+)</option>
+                <option value="Medium">⚖️ Medium (60-79%)</option>
+                <option value="Low">❌ Low (&lt;60%)</option>
+              </select>
 
-              {/* Enhanced Settings dropdown */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button size="sm" className="flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md">
-                    <Settings className="w-4 h-4" />
-                    Settings
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="end"
-                  className="w-64 p-2 bg-background border border-border shadow-xl rounded-xl backdrop-blur-sm"
-                  sideOffset={8}
-                >
-                  <div className="px-3 py-2 mb-2">
-                    <DropdownMenuLabel className="text-base font-semibold text-foreground flex items-center gap-2">
-                      <Settings className="w-4 h-4" />
-                      Column Visibility
-                    </DropdownMenuLabel>
-                    <p className="text-xs text-muted-foreground mt-1">Configure which columns to display in list view</p>
-                  </div>
-                  <DropdownMenuSeparator className="my-2" />
-                  
-                  <div className="space-y-1">
-                    <div 
-                      className={`flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition-all hover:bg-muted/60 ${
-                        visibleColumns.id ? 'bg-primary/10 text-primary' : 'text-foreground'
-                      }`}
-                      onClick={() => setVisibleColumns((prev) => ({ ...prev, id: !prev.id }))}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
-                          visibleColumns.id ? 'bg-primary border-primary' : 'border-muted-foreground'
-                        }`}>
-                          {visibleColumns.id && <Check className="w-3 h-3 text-primary-foreground" />}
-                        </div>
-                        <span className="text-sm font-medium">Train ID</span>
-                      </div>
-                    </div>
-
-                    <div 
-                      className={`flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition-all hover:bg-muted/60 ${
-                        visibleColumns.status ? 'bg-primary/10 text-primary' : 'text-foreground'
-                      }`}
-                      onClick={() => setVisibleColumns((prev) => ({ ...prev, status: !prev.status }))}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
-                          visibleColumns.status ? 'bg-primary border-primary' : 'border-muted-foreground'
-                        }`}>
-                          {visibleColumns.status && <Check className="w-3 h-3 text-primary-foreground" />}
-                        </div>
-                        <span className="text-sm font-medium">Status</span>
-                      </div>
-                    </div>
-
-                    <div 
-                      className={`flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition-all hover:bg-muted/60 ${
-                        visibleColumns.fitnessDays ? 'bg-primary/10 text-primary' : 'text-foreground'
-                      }`}
-                      onClick={() => setVisibleColumns((prev) => ({ ...prev, fitnessDays: !prev.fitnessDays }))}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
-                          visibleColumns.fitnessDays ? 'bg-primary border-primary' : 'border-muted-foreground'
-                        }`}>
-                          {visibleColumns.fitnessDays && <Check className="w-3 h-3 text-primary-foreground" />}
-                        </div>
-                        <span className="text-sm font-medium">Fitness Days</span>
-                      </div>
-                    </div>
-
-                    <div 
-                      className={`flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition-all hover:bg-muted/60 ${
-                        visibleColumns.openJobs ? 'bg-primary/10 text-primary' : 'text-foreground'
-                      }`}
-                      onClick={() => setVisibleColumns((prev) => ({ ...prev, openJobs: !prev.openJobs }))}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
-                          visibleColumns.openJobs ? 'bg-primary border-primary' : 'border-muted-foreground'
-                        }`}>
-                          {visibleColumns.openJobs && <Check className="w-3 h-3 text-primary-foreground" />}
-                        </div>
-                        <span className="text-sm font-medium">Open Jobs</span>
-                      </div>
-                    </div>
-
-                    <div 
-                      className={`flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition-all hover:bg-muted/60 ${
-                        visibleColumns.mileage ? 'bg-primary/10 text-primary' : 'text-foreground'
-                      }`}
-                      onClick={() => setVisibleColumns((prev) => ({ ...prev, mileage: !prev.mileage }))}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
-                          visibleColumns.mileage ? 'bg-primary border-primary' : 'border-muted-foreground'
-                        }`}>
-                          {visibleColumns.mileage && <Check className="w-3 h-3 text-primary-foreground" />}
-                        </div>
-                        <span className="text-sm font-medium">Mileage</span>
-                      </div>
-                    </div>
-
-                    <div 
-                      className={`flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition-all hover:bg-muted/60 ${
-                        visibleColumns.position ? 'bg-primary/10 text-primary' : 'text-foreground'
-                      }`}
-                      onClick={() => setVisibleColumns((prev) => ({ ...prev, position: !prev.position }))}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
-                          visibleColumns.position ? 'bg-primary border-primary' : 'border-muted-foreground'
-                        }`}>
-                          {visibleColumns.position && <Check className="w-3 h-3 text-primary-foreground" />}
-                        </div>
-                        <span className="text-sm font-medium">Position</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <DropdownMenuSeparator className="my-2" />
-                  <div className="px-3 py-2">
-                    <p className="text-xs text-muted-foreground">
-                      {Object.values(visibleColumns).filter(Boolean).length} of {Object.keys(visibleColumns).length} columns visible
-                    </p>
-                  </div>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              
             </div>
           </div>
         </div>
 
-        {/* Main content */}
-        {viewMode === "cards" ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-          {filteredTrainsets.map((trainset) => {
-            const healthScore = trainset.health_score || 0
-            const mileageData: number[] = [
-              trainset.mileage?.totalMileageKM || 0,
-              trainset.mileage?.mileageSinceLastServiceKM || 0,
-              trainset.mileage?.mileageBalanceVariance || 0,
-            ]
-            const mileageTotal: number = trainset.mileage?.totalMileageKM || 0
-            const formatKm = (n: number) =>
-              n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M km` : n >= 1_000 ? `${(n / 1_000).toFixed(1)}k km` : `${n} km`
-        
-            return (
-              <div
-                key={trainset.trainID}
-                onClick={() => handleRowClick(trainset)}
-                className="bg-gradient-to-br from-background via-card to-background/80 rounded-3xl shadow-md hover:shadow-2xl transition-all duration-300 cursor-pointer overflow-hidden hover:scale-[1.02] group"
-              >
-                {/* Header */}
-                <div className="p-6 pb-4 bg-gradient-to-r from-muted/40 to-muted/10">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h3 className="text-xl font-extrabold text-foreground flex items-center gap-2">
-                        🚆 {trainset.trainname}
-                      </h3>
-                      <p className="text-xs text-muted-foreground">Train {trainset.trainID}</p>
-                    </div>
-                    <div className="flex flex-col gap-2 items-end">
-                      <Badge
-                        className={`text-xs px-2 py-1 font-medium rounded-md shadow-sm ${
-                          (trainset.operations?.operationalStatus?.toLowerCase() === "in_service" || trainset.status === "Active")
-                            ? "bg-emerald-100 text-emerald-700"
-                            : (trainset.operations?.operationalStatus?.toLowerCase() === "under_maintenance" || trainset.status === "Maintenance")
-                            ? "bg-amber-100 text-amber-700"
-                            : "bg-red-100 text-red-700"
-                        }`}
-                      >
-                        {trainset.operations?.operationalStatus || trainset.status}
-                      </Badge>
-                      {(trainset.jobCardStatus?.openJobCards || 0) > 0 && (
-                        <div className="text-xs text-red-600 font-semibold bg-red-100 px-2 py-1 rounded-md shadow-sm">
-                          ⚠️ Job Card: Open
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-        
-                {/* Body */}
-                <div className="p-6 space-y-8">
-                  {/* Health Score */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-sm font-semibold text-foreground">Health Score</div>
-                      <div className="text-xs text-muted-foreground">Based on fitness, jobs, mileage & wear</div>
-                    </div>
-                    <CircularProgress value={healthScore} size={70} />
-                  </div>
-        
-        
-                  <div className="grid grid-cols-2 gap-6">
-                      {/* Availability */}
-                      <div className="space-y-2 text-center">
-                        <div className="text-xs font-medium text-muted-foreground">Availability</div>
-                        <div className="flex flex-col items-center gap-2">
-                          <Progress value={trainset.availability_confidence || healthScore} className="h-2 w-20 rounded-full" />
-                          <span className="text-sm font-semibold text-foreground">
-                            {trainset.availability_confidence || healthScore}%
-                          </span>
-                        </div>
-                      </div>
 
-                      {/* Weekly Mileage */}
-                      <div className="space-y-2 text-center">
-                        <div className="text-xs font-medium text-muted-foreground">Total Mileage</div>
-                        <div className="flex items-center justify-center gap-3">
-                          <MiniChart data={mileageData} color="bg-chart-1" />
-                          <span className="text-sm font-semibold text-foreground">
-                            {formatKm(mileageTotal)}
-                          </span>
-                        </div>
+
+
+
+
+
+        {/* Trainset list/cards */}
+        {viewMode === "cards" ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {filteredTrainsets.map((t) => {
+              const health = t.health_score || getHealthScoreFromModel(t)
+              const reason = t.recommendation || getRecommendationReason(t)
+
+              return (
+                <article
+                  key={t.trainID}
+                  onClick={() => setSelectedTrainset(t)}
+                  className="glass-card p-6 cursor-pointer hover:scale-105 transition-all duration-200 group"
+                >
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <h3 className="text-lg font-bold text-foreground truncate">
+                          🚆 {t.trainname || `Train ${t.trainID}`}
+                        </h3>
+                        <span className="status-pill">{t.status}</span>
                       </div>
+                      <div className="text-sm text-muted-foreground flex items-center gap-2">
+                        <FaBolt className="w-3 h-3 text-yellow-500" />
+                        <span className="truncate">ID: {t.trainID}</span>
                       </div>
-        
-                  {/* Location + Open Jobs */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="rounded-xl p-4 text-center bg-gradient-to-br from-muted/30 to-muted/10 shadow-inner">
-                      <div className="text-lg font-bold text-foreground flex items-center justify-center gap-1">
-                        📍 {trainset.stabling?.bayPositionID || trainset.stabling_position || "N/A"}
-                      </div>
-                      <div className="text-xs text-muted-foreground">Bay Position</div>
-                    </div>
-                    <div className="rounded-xl p-4 text-center bg-gradient-to-br from-muted/30 to-muted/10 shadow-inner">
-                      <div
-                        className={`text-lg font-bold flex items-center justify-center gap-1 ${
-                          (trainset.jobCardStatus?.openJobCards || 0) > 0 ? "text-red-600" : "text-emerald-600"
-                        }`}
-                      >
-                        🛠 {trainset.jobCardStatus?.openJobCards || 0}
-                      </div>
-                      <div className="text-xs text-muted-foreground">Open Jobs</div>
-                    </div>
-                  </div>
-        
-                  {/* Sub-metrics */}
-                  <div className="grid grid-cols-3 gap-4 text-center">
-                    <div className="rounded-lg p-3 bg-muted/20 backdrop-blur-sm shadow-sm">
-                      <div className="text-sm font-bold text-foreground">
-                        {(() => {
-                          const hvacWear = trainset.mileage?.hvacWearPercent || 0
-                          const hvacHealth = Math.max(0, Math.min(100, 100 - Number(hvacWear)))
-                          return `${hvacHealth.toFixed(1)}%`
-                        })()}
-                      </div>
-                      <div className="text-xs text-muted-foreground">HVAC Health</div>
-                    </div>
-                    <div className="rounded-lg p-3 bg-muted/20 backdrop-blur-sm shadow-sm">
-                      <div className="text-sm font-bold text-amber-500">
-                        {`${(trainset.mileage?.brakepadWearPercent || 0)}%`}
-                      </div>
-                      <div className="text-xs text-muted-foreground">Brake Wear</div>
-                    </div>
-                    <div className="rounded-lg p-3 bg-muted/20 backdrop-blur-sm shadow-sm">
-                      <div className={`text-sm font-bold ${
-                        trainset.fitness?.rollingStockFitnessStatus && trainset.fitness?.signallingFitnessStatus && trainset.fitness?.telecomFitnessStatus
-                          ? "text-emerald-500"
-                          : "text-red-500"
-                      }`}>
-                        {trainset.fitness?.rollingStockFitnessStatus && trainset.fitness?.signallingFitnessStatus && trainset.fitness?.telecomFitnessStatus
-                          ? "✓ All"
-                          : "⚠ Issues"
-                        }
-                      </div>
-                      <div className="text-xs text-muted-foreground">Fitness Certs</div>
                     </div>
                   </div>
-                  
-                  {/* Status Reason */}
-                  <div className="text-center pt-4 border-t border-border">
-                    <p className="text-xs text-muted-foreground mb-2">Status Reason</p>
-                    <p className={`text-sm font-medium ${
-                      (trainset.operations?.operationalStatus?.toLowerCase() || trainset.status.toLowerCase()).includes('service') 
-                        ? 'text-green-600 dark:text-green-400' 
-                        : (trainset.operations?.operationalStatus?.toLowerCase() || trainset.status.toLowerCase()).includes('maintenance')
-                        ? 'text-orange-600 dark:text-orange-400'
-                        : (trainset.operations?.operationalStatus?.toLowerCase() || trainset.status.toLowerCase()).includes('standby')
-                        ? 'text-yellow-600 dark:text-yellow-400'
-                        : 'text-red-600 dark:text-red-400'
-                    }`}>
-                      {getStatusReason(trainset)}
-                    </p>
+
+                  <div className="flex items-center justify-center mb-6">
+                    <CircularProgress value={health} size={100} strokeWidth={8} />
                   </div>
-                </div>
-        
-               
-              </div>
-            )
-          })}
-        </div>
-        
-        
+
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div className="text-center p-3 bg-surface rounded-lg">
+                      <div className="text-xs text-muted-foreground mb-1 flex items-center justify-center gap-1">
+                        <FiTruck className="w-3 h-3 text-blue-500" /> Mileage
+                      </div>
+                      <div className="font-bold text-foreground">{formatKm(t.mileage?.totalMileageKM || 0)}</div>
+                    </div>
+
+                    <div className="text-center p-3 bg-surface rounded-lg">
+                      <div className="text-xs text-muted-foreground mb-1 flex items-center justify-center gap-1">
+                        <FaTools className="w-3 h-3 text-amber-600" /> Jobs
+                      </div>
+                      <div className="font-bold text-foreground">{t.jobCardStatus?.openJobCards ?? 0}</div>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-border pt-4">
+                    <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
+                      <FaShieldAlt className="w-3 h-3 text-purple-500" /> Status
+                    </div>
+                    <div className="text-sm text-foreground font-medium line-clamp-2">{reason}</div>
+                  </div>
+                </article>
+              )
+            })}
+          </div>
         ) : (
-          <div className="bg-card rounded-lg border overflow-hidden shadow-sm">
-            <CompactTable data={filteredTrainsets} onRowClick={handleRowClick} />
+          <div className="glass-card overflow-hidden">
+            <CompactTable data={filteredTrainsets} onRowClick={(r) => setSelectedTrainset(r)} />
           </div>
         )}
 
         {selectedTrainset && (
-          <TrainsetModal isOpen={!!selectedTrainset} onClose={handleCloseModal} trainset={selectedTrainset} />
+          <TrainsetModal
+            isOpen={!!selectedTrainset}
+            onClose={() => setSelectedTrainset(null)}
+            trainset={selectedTrainset}
+          />
         )}
+
+
+        
       </div>
     </div>
   )

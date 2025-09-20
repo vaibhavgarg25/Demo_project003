@@ -1,319 +1,417 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useMemo, useState } from "react"
 import { ChevronUp, ChevronDown, Eye } from "lucide-react"
 import type { Trainset } from "@/lib/mock-data"
 import { daysUntil, sortByKey } from "@/lib/utils"
 
-interface CompactTableProps {
-  data: (Trainset & { health_score?: number })[]
-  onRowClick?: (trainset: Trainset) => void
+// react-icons for lively table
+import { FaTools, FaShieldAlt } from "react-icons/fa"
+import { FiTruck, FiActivity } from "react-icons/fi"
+
+/* ---------------------------
+   Health calculation (shared)
+   --------------------------- */
+
+function daysUntilSafe(d: string | Date) {
+  try {
+    return daysUntil(d as any)
+  } catch {
+    return Number.POSITIVE_INFINITY
+  }
 }
+
+function computeRawHealth(trainset: any): number {
+  const safeNum = (v: any, cap = 100) => (typeof v === "number" && !Number.isNaN(v) ? Math.max(0, Math.min(v, cap)) : 0)
+
+  const fitnessFlags = [
+    trainset.fitness?.rollingStockFitnessStatus,
+    trainset.fitness?.signallingFitnessStatus,
+    trainset.fitness?.telecomFitnessStatus,
+  ]
+  const fitnessPopulated = fitnessFlags.filter((f) => f !== undefined && f !== null).length
+  const fitnessTrue = fitnessFlags.filter((f) => f === true).length
+  const fitnessPercent = fitnessPopulated ? (fitnessTrue / fitnessPopulated) * 100 : 50
+
+  const expiryDates = [
+    trainset.fitness?.rollingStockFitnessExpiryDate,
+    trainset.fitness?.signallingFitnessExpiryDate,
+    trainset.fitness?.telecomFitnessExpiryDate,
+  ].filter(Boolean)
+  const minExpiryDays = expiryDates.length
+    ? Math.min(...expiryDates.map((d: any) => daysUntilSafe(d)))
+    : Number.POSITIVE_INFINITY
+  let expiryPenalty = 0
+  if (minExpiryDays <= 0) expiryPenalty = 40
+  else if (minExpiryDays <= 7) expiryPenalty = 20
+  else if (minExpiryDays <= 30) expiryPenalty = 10
+
+  const openJobs = trainset.jobCardStatus?.openJobCards ?? 0
+  const jobPenalty = Math.min(openJobs * 3, 30)
+
+  const mileage = safeNum(trainset.mileage?.totalMileageKM ?? 0, 1_000_000)
+  const mileageScore = 100 * (1 / (1 + Math.pow(mileage / 180000, 1.2)))
+
+  const brake = safeNum(trainset.mileage?.brakepadWearPercent ?? 0, 100)
+  const hvac = safeNum(trainset.mileage?.hvacWearPercent ?? 0, 100)
+  const wearScore = brake || hvac ? Math.max(0, 100 - (brake + hvac) / 2) : 70
+
+  const cleaningPenalty = trainset.cleaning?.cleaningRequired ? 10 : 0
+  const brandingBoost = trainset.branding?.brandingActive ? 4 : 0
+  const opScore = safeNum(trainset.operations?.score ?? 70, 100)
+
+  const raw =
+    0.28 * fitnessPercent +
+    0.22 * mileageScore +
+    0.2 * wearScore +
+    0.2 * opScore +
+    0.1 * 100 -
+    expiryPenalty -
+    jobPenalty -
+    cleaningPenalty +
+    brandingBoost
+
+  return Math.round(Math.max(0, Math.min(100, raw)))
+}
+
+function mapToDisplayHealth(raw: number): number {
+  return Math.round(70 + (raw / 100) * 20)
+}
+
+function getHealthScore(trainset: any): number {
+  return mapToDisplayHealth(computeRawHealth(trainset))
+}
+
+function getRecommendationReason(trainset: Trainset): string {
+  const openJobs = trainset.jobCardStatus?.openJobCards ?? 0
+  const totalMileage = trainset.mileage?.totalMileageKM ?? 0
+  const soon = [
+    trainset.fitness?.rollingStockFitnessExpiryDate,
+    trainset.fitness?.signallingFitnessExpiryDate,
+    trainset.fitness?.telecomFitnessExpiryDate,
+  ]
+    .filter(Boolean)
+    .map((d: any) => daysUntilSafe(d))
+    .reduce((a, b) => Math.min(a, b), Number.POSITIVE_INFINITY)
+
+  if (soon <= 0) return `⚠️ Fitness expired — ground until recertified`
+  if (openJobs > 5) return `🛠 ${openJobs} open jobs — prioritize maintenance`
+  if (totalMileage > 250000) return `🔍 High mileage (${Math.round(totalMileage)} km) — inspect`
+
+  return `ℹ️ ${openJobs} open jobs • ${Math.round(totalMileage).toLocaleString()} km`
+}
+
+/* ---------------------------
+   Column definitions
+   --------------------------- */
 
 type SortKey = keyof Trainset | "fitnessExpiry" | "openJobs" | "health_score" | "reason"
 type SortDirection = "asc" | "desc"
 
-// Helper function to get status reason
-const getStatusReason = (trainset: Trainset & { health_score?: number }) => {
-  const operationalStatus = trainset.operations?.operationalStatus?.toLowerCase() || trainset.status.toLowerCase()
-  const openJobs = trainset.jobCardStatus?.openJobCards || 0
-  const brakeWear = trainset.mileage?.brakepadWearPercent || 0
-  const hvacWear = trainset.mileage?.hvacWearPercent || 0
-  
-  // Check fitness status
-  const rollingStockExpiry = trainset.fitness?.rollingStockFitnessExpiryDate 
-    ? daysUntil(trainset.fitness.rollingStockFitnessExpiryDate) 
-    : -1
-  const signallingExpiry = trainset.fitness?.signallingFitnessExpiryDate 
-    ? daysUntil(trainset.fitness.signallingFitnessExpiryDate) 
-    : -1
-  const telecomExpiry = trainset.fitness?.telecomFitnessExpiryDate 
-    ? daysUntil(trainset.fitness.telecomFitnessExpiryDate) 
-    : -1
-  
-  // Determine reason based on status and conditions
-  switch (operationalStatus) {
-    case "in_service":
-    case "active":
-      if (openJobs > 0) return `${openJobs} pending job cards`
-      return "Operational"
-      
-    case "under_maintenance":
-    case "maintenance":
-      if (brakeWear > 80) return "Brake maintenance required"
-      if (hvacWear > 80) return "HVAC maintenance required"
-      if (openJobs > 5) return "Multiple maintenance jobs"
-      if (rollingStockExpiry < 0) return "Fitness certificate expired"
-      return "Scheduled maintenance"
-      
-    case "standby":
-      if (rollingStockExpiry < 7 && rollingStockExpiry > 0) return "Fitness expiring soon"
-      if (openJobs > 0) return "Minor maintenance pending"
-      return "Ready for deployment"
-      
-    case "out_of_service":
-    case "outofservice":
-      if (rollingStockExpiry < 0) return "Fitness certificate expired"
-      if (signallingExpiry < 0) return "Signalling fitness expired"
-      if (telecomExpiry < 0) return "Telecom fitness expired"
-      if (brakeWear > 90 || hvacWear > 90) return "Critical wear condition"
-      if (openJobs > 10) return "Extensive maintenance required"
-      return "Out of service"
-      
-    default:
-      return "Status unknown"
-  }
-}
-
-const statusColors = {
-  Active: "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400",
-  Standby: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400",
-  Maintenance: "bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400",
-  OutOfService: "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400",
-  in_service: "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400",
-  standby: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400",
-  under_maintenance: "bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400",
-}
-
-const columns = [
-  { key: "id" as SortKey, label: "ID", visible: true },
-  { key: "status" as SortKey, label: "Status", visible: true },
-  { key: "health_score" as SortKey, label: "Health Score", visible: true },
-  { key: "openJobs" as SortKey, label: "Open Jobs", visible: true },
-  { key: "mileage" as SortKey, label: "Total Mileage", visible: true },
-  { key: "stabling_position" as SortKey, label: "Bay Position", visible: true },
-  { key: "reason" as SortKey, label: "Status Reason", visible: true },
+const COLUMNS: { key: SortKey; label: string; visible: boolean; width?: string }[] = [
+  { key: "id", label: "ID", visible: true, width: "w-24" },
+  { key: "trainname", label: "Train Name", visible: true, width: "w-48" },
+  { key: "status", label: "Status", visible: true, width: "w-32" },
+  { key: "health_score", label: "Health", visible: true, width: "w-24" },
+  { key: "openJobs", label: "Jobs", visible: true, width: "w-20" },
+  { key: "mileage", label: "Mileage", visible: true, width: "w-32" },
+  { key: "stabling_position", label: "Bay", visible: true, width: "w-24" },
+  { key: "reason", label: "Reason", visible: true, width: "flex-1" },
 ]
 
-export function CompactTable({ data, onRowClick }: CompactTableProps) {
+/* ---------------------------
+   Component
+   --------------------------- */
+
+export function CompactTable({
+  data,
+  onRowClick,
+}: { data: (Trainset & { health_score?: number })[]; onRowClick?: (t: Trainset) => void }) {
   const [sortKey, setSortKey] = useState<SortKey>("id")
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc")
   const [visibleColumns] = useState(
-    columns.reduce((acc, col) => ({ ...acc, [col.key]: col.visible }), {} as Record<SortKey, boolean>),
+    COLUMNS.reduce((acc, col) => ({ ...acc, [col.key]: col.visible }), {} as Record<SortKey, boolean>),
   )
+
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
 
-  const filteredAndSortedData = useMemo(() => {
-    // No search/status/fitness filtering here — the parent page provides already-filtered data if needed.
-    let working = [...data]
+  const enriched = useMemo(() => {
+    return data.map((t) => ({
+      ...t,
+      health_score: t.health_score ?? getHealthScore(t),
+      reason: getRecommendationReason(t),
+    }))
+  }, [data])
 
-    // Sort data
-    if (sortKey === "fitnessExpiry") {
-      working = working.sort((a, b) => {
-        const aExpiry = a.fitness_certificate?.expiry_date ? daysUntil(a.fitness_certificate.expiry_date) : 999
-        const bExpiry = b.fitness_certificate?.expiry_date ? daysUntil(b.fitness_certificate.expiry_date) : 999
-        return sortDirection === "asc" ? aExpiry - bExpiry : bExpiry - aExpiry
-      })
-    } else if (sortKey === "openJobs") {
-      working = working.sort((a, b) => {
-        const aJobs = a.jobCardStatus?.openJobCards || 0
-        const bJobs = b.jobCardStatus?.openJobCards || 0
-        return sortDirection === "asc" ? aJobs - bJobs : bJobs - aJobs
+  const sorted = useMemo(() => {
+    let copy = [...enriched]
+    if (sortKey === "openJobs") {
+      copy.sort((a, b) => {
+        const aj = a.jobCardStatus?.openJobCards || 0
+        const bj = b.jobCardStatus?.openJobCards || 0
+        return sortDirection === "asc" ? aj - bj : bj - aj
       })
     } else if (sortKey === "health_score") {
-      working = working.sort((a, b) => {
-        const aScore = (a as any).health_score || 0
-        const bScore = (b as any).health_score || 0
-        return sortDirection === "asc" ? aScore - bScore : bScore - aScore
-      })
+      copy.sort((a, b) =>
+        sortDirection === "asc"
+          ? (a.health_score ?? 0) - (b.health_score ?? 0)
+          : (b.health_score ?? 0) - (a.health_score ?? 0),
+      )
+    } else if (sortKey === "reason") {
+      copy.sort((a, b) =>
+        sortDirection === "asc"
+          ? (a.reason || "").localeCompare(b.reason || "")
+          : (b.reason || "").localeCompare(a.reason || ""),
+      )
     } else {
-      working = sortByKey(working, sortKey as keyof Trainset, sortDirection)
+      copy = sortByKey(copy, sortKey as keyof Trainset, sortDirection)
     }
+    return copy
+  }, [enriched, sortKey, sortDirection])
 
-    return working
-  }, [data, sortKey, sortDirection])
+  const paginated = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage
+    return sorted.slice(start, start + itemsPerPage)
+  }, [sorted, currentPage])
 
-  const paginatedData = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage
-    return filteredAndSortedData.slice(startIndex, startIndex + itemsPerPage)
-  }, [filteredAndSortedData, currentPage])
+  const totalPages = Math.max(1, Math.ceil(sorted.length / itemsPerPage))
 
-  const totalPages = Math.ceil(filteredAndSortedData.length / itemsPerPage)
-
-  const handleSort = (key: SortKey) => {
-    if (sortKey === key) {
-      setSortDirection((d) => (d === "asc" ? "desc" : "asc"))
-    } else {
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) setSortDirection((d) => (d === "asc" ? "desc" : "asc"))
+    else {
       setSortKey(key)
       setSortDirection("asc")
     }
   }
 
-  if (data.length === 0) {
+  if (!data || data.length === 0) {
     return (
-      <div className="bg-surface border border-border rounded-lg p-8 text-center">
-        <p className="text-muted">No trainset data available. Please check your API connection or ensure trains are loaded.</p>
+      <div className="p-8 text-center">
+        <p className="text-gray-600 dark:text-gray-400">No trainset data available.</p>
       </div>
     )
   }
 
   return (
     <div className="space-y-4">
-      {/* NOTE: Filters removed — expect the parent to supply already-filtered data if needed */}
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[800px]">
+          {/* Header: use neutral/background so it sits on layout */}
+          <thead>
+            <tr className="border-b border-border bg-background">
+              {COLUMNS.map(
+                (col) =>
+                  visibleColumns[col.key] && (
+                    <th
+                      key={String(col.key)}
+                      onClick={() => toggleSort(col.key)}
+                      className={`px-6 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide select-none cursor-pointer hover:bg-muted/50 transition-colors ${col.width || ""}`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span>{col.label}</span>
+                        {sortKey === col.key && (
+                          <div className="text-foreground">
+                            {sortDirection === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                          </div>
+                        )}
+                      </div>
+                    </th>
+                  ),
+              )}
+              <th className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground uppercase w-16">
+                Actions
+              </th>
+            </tr>
+          </thead>
 
-      {/* Table */}
-      <div className="bg-surface border border-border rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-bg-hover">
-              <tr>
-                {columns.map(
-                  (column) =>
-                    visibleColumns[column.key] && (
-                      <th
-                        key={column.key}
-                        className="px-4 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider cursor-pointer hover:bg-background transition-colors"
-                        onClick={() => handleSort(column.key)}
-                      >
-                        <div className="flex items-center gap-1">
-                          {column.label}
-                          {sortKey === column.key &&
-                            (sortDirection === "asc" ? (
-                              <ChevronUp className="w-3 h-3" />
-                            ) : (
-                              <ChevronDown className="w-3 h-3" />
-                            ))}
-                        </div>
-                      </th>
-                    ),
-                )}
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {paginatedData.map((trainset) => {
-                const fitnessExpiry = trainset.fitness?.rollingStockFitnessExpiryDate
-                  ? daysUntil(trainset.fitness.rollingStockFitnessExpiryDate)
-                  : 999
-                const openJobs = trainset.jobCardStatus?.openJobCards || 0
-                const healthScore = (trainset as any).health_score || 0
-                const currentStatus = trainset.operations?.operationalStatus || trainset.status
+          {/* Body: removed the separate white/dark block background so table blends with layout */}
+          <tbody className="divide-y divide-border bg-background">
+            {paginated.map((row) => {
+              const health = row.health_score ?? 0
+              const openJobs = row.jobCardStatus?.openJobCards ?? 0
+              const mileage = row.mileage?.totalMileageKM ?? 0
+              const currentStatus = row.operations?.operationalStatus || row.status || "Unknown"
 
-                return (
-                  <tr
-                    key={trainset.trainID}
-                    className="hover:bg-bg-hover transition-colors cursor-pointer"
-                    onClick={() => onRowClick?.(trainset)}
-                  >
-                    {visibleColumns.id && (
-                      <td className="px-4 py-3 text-sm font-medium text-text">{trainset.trainID}</td>
-                    )}
-                    {visibleColumns.status && (
-                      <td className="px-4 py-3">
+              return (
+                <tr
+                  key={row.trainID}
+                  onClick={() => onRowClick?.(row)}
+                  className="hover:bg-muted/50 transition-colors cursor-pointer"
+                >
+                  {/* ID */}
+                  {visibleColumns.id && (
+                    <td className="px-6 py-4 text-sm font-medium text-foreground w-24">
+                      {row.trainID}
+                    </td>
+                  )}
+
+                  {/* Train name (fixed) */}
+                  {visibleColumns.trainname && (
+                    <td className="px-6 py-4 text-sm text-foreground w-48 truncate">
+                      {row.trainname || `Train ${row.trainID}`}
+                    </td>
+                  )}
+
+                  {/* Status — colored icon + colored pill */}
+                  {visibleColumns.status && (
+                    <td className="px-6 py-4 text-sm w-32">
+                      <div className="inline-flex items-center gap-2">
+                        <FiActivity
+                          className={`w-4 h-4 ${
+                            currentStatus.toLowerCase().includes("service") || currentStatus.toLowerCase().includes("active")
+                              ? "text-green-600 dark:text-green-400"
+                              : currentStatus.toLowerCase().includes("maintenance")
+                                ? "text-yellow-600 dark:text-yellow-400"
+                                : currentStatus.toLowerCase().includes("standby")
+                                  ? "text-blue-600 dark:text-blue-400"
+                                  : "text-red-600 dark:text-red-400"
+                          }`}
+                        />
                         <span
-                          className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                            statusColors[currentStatus as keyof typeof statusColors] ||
-                            "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400"
+                          className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            currentStatus.toLowerCase().includes("service") || currentStatus.toLowerCase().includes("active")
+                              ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                              : currentStatus.toLowerCase().includes("maintenance")
+                                ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
+                                : currentStatus.toLowerCase().includes("standby")
+                                  ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
+                                  : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
                           }`}
                         >
                           {currentStatus}
                         </span>
-                      </td>
-                    )}
-                    {visibleColumns.health_score && (
-                      <td className="px-4 py-3 text-sm text-text">
-                        <div className="flex items-center gap-2">
-                          <div className={`w-2 h-2 rounded-full ${
-                            healthScore >= 80 ? 'bg-green-500' : 
-                            healthScore >= 60 ? 'bg-yellow-500' : 'bg-red-500'
-                          }`}></div>
-                          <span className={`font-medium ${
-                            healthScore >= 80 ? 'text-green-600 dark:text-green-400' : 
-                            healthScore >= 60 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'
-                          }`}>
-                            {healthScore}%
-                          </span>
-                        </div>
-                      </td>
-                    )}
-                    {visibleColumns.openJobs && (
-                      <td className="px-4 py-3 text-sm text-text">
-                        <span className={openJobs > 2 ? "text-orange-600 dark:text-orange-400 font-medium" : ""}>
+                      </div>
+                    </td>
+                  )}
+
+                  {/* Health — colored shield and % */}
+                  {visibleColumns.health_score && (
+                    <td className="px-6 py-4 text-sm w-24">
+                      <div className="inline-flex items-center gap-2">
+                        <FaShieldAlt
+                          className={
+                            health >= 80
+                              ? "text-green-600 dark:text-green-400"
+                              : health >= 60
+                                ? "text-yellow-600 dark:text-yellow-400"
+                                : "text-red-600 dark:text-red-400"
+                          }
+                        />
+                        <span
+                          className={`font-semibold ${
+                            health >= 80
+                              ? "text-green-600 dark:text-green-400"
+                              : health >= 60
+                                ? "text-yellow-600 dark:text-yellow-400"
+                                : "text-red-600 dark:text-red-400"
+                          }`}
+                        >
+                          {health}%
+                        </span>
+                      </div>
+                    </td>
+                  )}
+
+                  {/* Jobs — colored */}
+                  {visibleColumns.openJobs && (
+                    <td className="px-6 py-4 text-sm w-20">
+                      <div className="inline-flex items-center gap-2">
+                        <FaTools
+                          className={`w-4 h-4 ${
+                            openJobs === 0
+                              ? "text-green-600 dark:text-green-400"
+                              : openJobs <= 3
+                                ? "text-yellow-600 dark:text-yellow-400"
+                                : "text-red-600 dark:text-red-400"
+                          }`}
+                        />
+                        <span
+                          className={`font-semibold ${
+                            openJobs === 0
+                              ? "text-green-600 dark:text-green-400"
+                              : openJobs <= 3
+                                ? "text-yellow-600 dark:text-yellow-400"
+                                : "text-red-600 dark:text-red-400"
+                          }`}
+                        >
                           {openJobs}
                         </span>
-                      </td>
-                    )}
-                    {visibleColumns.mileage && (
-                      <td className="px-4 py-3 text-sm text-text">
-                        {(trainset.mileage?.totalMileageKM || 0).toLocaleString()} km
-                      </td>
-                    )}
-                    {visibleColumns.stabling_position && (
-                      <td className="px-4 py-3 text-sm text-text">
-                        {trainset.stabling?.bayPositionID || trainset.stabling_position || "N/A"}
-                      </td>
-                    )}
-                    {visibleColumns.reason && (
-                      <td className="px-4 py-3 text-sm text-text">
-                        <span className={`${
-                          currentStatus?.toLowerCase().includes('service') 
-                            ? 'text-green-600 dark:text-green-400' 
-                            : currentStatus?.toLowerCase().includes('maintenance')
-                            ? 'text-orange-600 dark:text-orange-400'
-                            : currentStatus?.toLowerCase().includes('standby')
-                            ? 'text-yellow-600 dark:text-yellow-400'
-                            : 'text-red-600 dark:text-red-400'
-                        }`}>
-                          {getStatusReason(trainset as any)}
-                        </span>
-                      </td>
-                    )}
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          onRowClick?.(trainset)
-                        }}
-                        className="p-1 rounded-md hover:bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-text focus:ring-offset-2"
-                        aria-label={`View details for ${trainset.trainID}`}
-                      >
-                        <Eye className="w-4 h-4 text-muted" />
-                      </button>
+                      </div>
                     </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+                  )}
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="px-4 py-3 border-t border-border flex items-center justify-between">
-            <div className="text-sm text-muted">
-              Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
-              {Math.min(currentPage * itemsPerPage, filteredAndSortedData.length)} of {filteredAndSortedData.length}{" "}
-              results
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                disabled={currentPage === 1}
-                className="px-3 py-1 text-sm border border-border rounded-md bg-background text-text hover:bg-bg-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus:outline-none focus:ring-2 focus:ring-text focus:ring-offset-2"
-              >
-                Previous
-              </button>
-              <span className="text-sm text-muted">
-                Page {currentPage} of {totalPages}
-              </span>
-              <button
-                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                disabled={currentPage === totalPages}
-                className="px-3 py-1 text-sm border border-border rounded-md bg-background text-text hover:bg-bg-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus:outline-none focus:ring-2 focus:ring-text focus:ring-offset-2"
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        )}
+                  {/* Mileage — keep blue icon */}
+                  {visibleColumns.mileage && (
+                    <td className="px-6 py-4 text-sm text-muted-foreground w-32">
+                      <div className="inline-flex items-center gap-2">
+                        <FiTruck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                        <span className="font-medium text-foreground">{mileage.toLocaleString()} km</span>
+                      </div>
+                    </td>
+                  )}
+
+                  {/* Bay */}
+                  {visibleColumns.stabling_position && (
+                    <td className="px-6 py-4 text-sm text-muted-foreground w-24">
+                      {row.stabling?.bayPositionID ?? row.stabling_position ?? "N/A"}
+                    </td>
+                  )}
+
+                  {/* Reason */}
+                  {visibleColumns.reason && (
+                    <td className="px-6 py-4 text-sm text-foreground flex-1">
+                      <div className="truncate max-w-xs" title={row.reason}>
+                        {row.reason}
+                      </div>
+                    </td>
+                  )}
+
+                  {/* Actions */}
+                  <td className="px-6 py-4 w-16">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onRowClick?.(row)
+                      }}
+                      className="p-2 rounded-md hover:bg-muted/50 transition-colors"
+                      title="View details"
+                    >
+                      <Eye className="w-4 h-4 text-muted-foreground" />
+                    </button>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
       </div>
 
-      {filteredAndSortedData.length === 0 && (
-        <div className="text-center py-8">
-          <p className="text-muted">No trainsets found matching your criteria.</p>
+      {/* Pagination: keep neutral background so it sits on layout */}
+      <div className="px-6 py-3 border-t border-border flex items-center justify-between bg-background">
+        <div className="text-sm text-muted-foreground">
+          Showing {(currentPage - 1) * itemsPerPage + 1}–{Math.min(currentPage * itemsPerPage, sorted.length)} of {sorted.length} results
         </div>
-      )}
+        <div className="flex items-center gap-2">
+          <button
+            disabled={currentPage === 1}
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            className="px-3 py-1 border border-border rounded-md text-sm bg-card text-foreground hover:bg-muted/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            Previous
+          </button>
+          <span className="text-sm text-muted-foreground">
+            Page {currentPage} of {totalPages}
+          </span>
+          <button
+            disabled={currentPage === totalPages}
+            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            className="px-3 py-1 border border-border rounded-md text-sm bg-card text-foreground hover:bg-muted/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            Next
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
